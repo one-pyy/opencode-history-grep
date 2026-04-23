@@ -1,0 +1,201 @@
+---
+name: history-recall
+description: Use this skill when a user refers to something done in the past, the current docs / knowledge database do not already answer it, or the user explicitly asks to search history.
+---
+
+# history-recall
+
+Use `opencode-history-grep` to query `opencode` history.
+
+## When to use
+
+Use this skill only in these cases:
+
+1. The user refers to something done in the past, but the current `docs/` and `knowledge_database/` do not contain enough information.
+2. The user explicitly asks to search history.
+
+`system` is not part of the history search domain.
+
+## Remember these defaults
+
+- Daily recall usually starts with `grep`.
+- `grep` automatically compiles / refreshes history, so manual `compile` is usually unnecessary.
+- Default upstream SQLite: `/root/.local/share/opencode/opencode.db`
+- Default compiled repository: `/root/.local/share/opencode-history-grep`
+- Default results are paginated: 10 per page, with `page a/b`
+- Result lists are meant to be judged by `match`, not by a generated summary.
+
+## Parameter quick reference
+
+### `grep`
+
+- `--query`: the search expression
+- `--regex`: interpret `--query` as regex; supports cross-line matching
+- `--type`: filter by block type; repeatable
+- `--directory`: filter by session working directory
+- `--since` / `--until`: filter by time window
+- `--page`: switch pages
+- `--page-size`: change page size
+
+### `show`
+
+- `--session`: session id
+- `--anchor`: anchor from a grep hit
+- `--before` / `--after`: how many blocks to show around an anchor
+- `--all`: show a whole compiled session
+- `--full-text`: do not truncate long text or tool output
+
+## How type filters work
+
+`--type` is repeatable.
+
+- `user`
+- `assistant` or `ai`
+- `tool_call`
+- `tool_result`
+- `tool` = `tool_call + tool_result`
+- `message` = `user + assistant`
+
+Task-oriented interpretation:
+
+- original requirements → `--type user`
+- explanations / conclusions → `--type assistant`
+- commands / arguments used before → `--type tool_call`
+- tool output / errors → `--type tool_result`
+
+Recommended defaults:
+
+- prefer `--type user`
+- prefer `--type assistant`
+
+Only use tool-related filters when the user is clearly asking about command arguments, tool output, or errors.
+
+## How parameter combinations work
+
+Different filter dimensions should be read as **AND**:
+
+- `--directory` + `--since/--until` means the same session must satisfy both directory and time constraints.
+- `--type` + `--query` means returned results must both belong to the allowed type range and match the query.
+
+`--type` itself is a union within the type dimension:
+
+- `--type user --type tool`
+
+means both `user` and `tool` results are allowed into the result set.
+
+If matches from these types appear in the same session, they can appear separately in the results. This does **not** mean one block must be both `user` and `tool` at the same time.
+
+## Scenario examples
+
+### Scenario 1: find earlier explanations or conclusions in a project
+
+Use when the user asks things like “why did we do this before?” or “did we discuss this plan last time?”
+
+```bash
+opencode-history-grep grep --regex --directory /root/_/opencode --type assistant --query "sqlite.*history|history.*sqlite"
+```
+
+### Scenario 2: find original requirement wording
+
+Use when the user wants the exact earlier phrasing of a request.
+
+```bash
+opencode-history-grep grep --regex --type user --query "dark\s+mode|theme\s+toggle"
+```
+
+### Scenario 3: find history in a time window
+
+Use when the user says “last week”, “early April”, or another bounded time range.
+
+```bash
+opencode-history-grep grep --regex --since 2026-04-01 --until 2026-04-23 --type assistant --query "migration|knowledge[_ -]?database"
+```
+
+### Scenario 4: find earlier commands or argument usage
+
+Use when the user asks “did we run this before?” or “what flag did we use last time?”
+
+```bash
+opencode-history-grep grep --regex --type tool_call --query "uv\s+tool\s+install|--editable|--page-size"
+```
+
+### Scenario 5: find tool output or an error
+
+Use when the user is explicitly looking for an error, tool output, or a multi-line trace.
+
+```bash
+opencode-history-grep grep --regex --type tool_result --query "line before\nneedle match|ModuleNotFoundError|Invalid time filter"
+```
+
+### Scenario 6: combine filters to narrow a wide search
+
+Use when the first search returns too much and you need to constrain both “who said it” and “what kind of action it was”.
+
+```bash
+opencode-history-grep grep --regex --type message --type tool_call --query "history[_ -]?grep|compile|show"
+```
+
+Here `message` and `tool_call` form the allowed type range together. Any matching block from those types can appear if it also satisfies the other filters.
+
+### Scenario 7: move to the next page
+
+Use when the result set is broad and you need the next page.
+
+```bash
+opencode-history-grep grep --regex --query "history|grep" --page 2
+```
+
+### Scenario 8: reopen context around a hit
+
+Use when you already have a hit with `session` and `anchor`.
+
+```bash
+opencode-history-grep show --session <session-id> --anchor <block-id> --before 5 --after 5
+```
+
+### Scenario 9: read a whole session (recommended first)
+
+Use when you already know the session id and want the whole compiled session, but do **not** want to immediately expand every long text or tool output.
+
+```bash
+opencode-history-grep show --session <session-id> --all
+```
+
+### Scenario 10: read a whole session with full text (use carefully)
+
+Use this only when the default truncated view is not enough and you explicitly need long raw block content.
+
+```bash
+opencode-history-grep show --session <session-id> --all --full-text
+```
+
+Warning: `--full-text` can expand very long text and tool output, making results much longer and harder to skim. Prefer not to use it unless necessary.
+
+## How to narrow wide results
+
+Prefer these moves first:
+
+- add `--type assistant`
+- or switch to `--type user`
+- add `--since/--until`
+- add `--directory`
+- write a tighter regex
+
+Do not immediately open many `show` commands.
+
+## How to read results
+
+`grep` returns block-level hits:
+
+- `session=<...>`: the matched session
+- `anchor=<...>`: reusable with `show`
+- `match:`: the matched snippet
+
+For `tool_result`, `match` is a local window, not the full raw output.
+
+## Never do these
+
+- Do not fall back to plain text grep. Reason: it does not know block boundaries and cannot jump back by anchor.
+- Do not treat `show` as a search command. Reason: it needs either a known `session` / `anchor` or a whole-session view.
+- Do not interpret directory filtering as file-content filtering. Reason: it filters session working directories.
+- Do not interpret time filtering as single-message trimming. Reason: it filters session scope.
