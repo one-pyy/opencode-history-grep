@@ -44,8 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
     _ = compile_parser.add_argument("--until", dest="until", help="Restrict sessions to updated/effective time on or before this ISO date/time.")
 
     grep_parser = subparsers.add_parser("grep", help="Search compiled history blocks.")
-    _ = grep_parser.add_argument("--query", required=True, help="Search query.")
+    _ = grep_parser.add_argument("--query", dest="queries", action="append", required=True, help="Search query. Repeatable.")
     _ = grep_parser.add_argument("--regex", action="store_true", help="Interpret --query as a regular expression, with cross-line matching enabled.")
+    _ = grep_parser.add_argument("--logic", choices=["and", "or"], default="or", help="How multiple --query values combine. Default: or")
     _ = grep_parser.add_argument("--type", dest="block_types", action="append", help="Filter block types. Repeatable: user, assistant|ai, tool_call, tool|tool_result.")
     _ = grep_parser.add_argument("--page", dest="page", type=int, default=1, help="Result page number. Default: 1")
     _ = grep_parser.add_argument("--page-size", dest="page_size", type=int, default=10, help="Results per page. Default: 10")
@@ -93,7 +94,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if command == "grep":
         return _run_grep(
-            query=args.query,
+            queries=tuple(args.queries),
+            query_logic=str(args.logic),
             use_regex=bool(args.regex),
             block_types=normalize_block_type_filters(args.block_types),
             page=max(1, int(args.page)),
@@ -129,7 +131,8 @@ def _run_compile(*, database_path: str, repository_path: str, session_filter: Se
 
 def _run_grep(
     *,
-    query: str,
+    queries: tuple[str, ...],
+    query_logic: str,
     use_regex: bool,
     block_types: set[str] | None,
     page: int,
@@ -143,13 +146,14 @@ def _run_grep(
     repository = open_compiled_repository(repository_path)
     results = search_compiled_repository(
         repository,
-        query,
+        queries,
+        query_logic=query_logic,
         session_filter=session_filter,
         use_regex=use_regex,
         block_types=block_types,
     )
     if not results:
-        print(f'No matches found for "{query}".')
+        print(f'No matches found for {queries!r}.')
         return 0
 
     page_result = paginate_search_results(results, page=page, page_size=page_size)
@@ -157,7 +161,8 @@ def _run_grep(
     _print_result_hints(
         total_results=page_result.total_results,
         page_size=page_result.page_size,
-        query=query,
+        queries=queries,
+        query_logic=query_logic,
         use_regex=use_regex,
         block_types=block_types,
         session_filter=session_filter,
@@ -229,7 +234,8 @@ def _print_result_hints(
     *,
     total_results: int,
     page_size: int,
-    query: str,
+    queries: tuple[str, ...],
+    query_logic: str,
     use_regex: bool,
     block_types: set[str] | None,
     session_filter: SessionFilter | None,
@@ -242,9 +248,9 @@ def _print_result_hints(
         hints.append("try --type assistant")
     if session_filter is None or (session_filter.since is None and session_filter.until is None):
         hints.append("try --since/--until")
-    if not use_regex and len(query.split()) > 1:
-        hints.append("try a more exact phrase or --regex")
-    elif not use_regex:
+    if len(queries) > 1 and query_logic == "or":
+        hints.append("try --logic and")
+    if not use_regex:
         hints.append("try --regex")
 
     if not hints:

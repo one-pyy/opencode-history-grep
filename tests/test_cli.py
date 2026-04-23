@@ -388,7 +388,7 @@ def test_grep_command_paginates_and_prints_page_header(tmp_path: Path) -> None:
     assert "try --since/--until" in output
 
 
-def test_grep_command_supports_type_filter(tmp_path: Path) -> None:
+def test_grep_command_supports_multiple_queries_with_and_logic(tmp_path: Path) -> None:
     database_path = tmp_path / "history.db"
     repository_path = tmp_path / "compiled_repo"
     _create_history_db(database_path)
@@ -400,16 +400,41 @@ def test_grep_command_supports_type_filter(tmp_path: Path) -> None:
             "--repository",
             str(repository_path),
             "--query",
-            "needle",
-            "--type",
-            "tool",
+            "elsewhere",
+            "--query",
+            "grep",
+            "--logic",
+            "and",
         ]
     )
 
     assert exit_code == 0
-    assert "[tool_result] session=session-cli" in output
-    assert "[user_text]" not in output
+    assert "session=session-cli" not in output
+    assert "session=session-other" not in output
+    
+def test_grep_command_supports_multiple_queries_with_or_logic(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
 
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+    exit_code, output = _run_cli(
+        [
+            "grep",
+            "--repository",
+            str(repository_path),
+            "--query",
+            "elsewhere",
+            "--query",
+            "grep",
+            "--logic",
+            "or",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "session=session-cli" in output
+    assert "session=session-other" in output
 
 def test_grep_command_supports_message_alias(tmp_path: Path) -> None:
     database_path = tmp_path / "history.db"

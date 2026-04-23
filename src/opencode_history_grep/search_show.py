@@ -70,15 +70,16 @@ class ShowResult:
 
 def search_compiled_repository(
     repository: CompiledRepository | str | Path,
-    query: str,
+    queries: tuple[str, ...],
     *,
+    query_logic: str = "or",
     session_filter: SessionFilter | None = None,
     use_regex: bool = False,
     block_types: set[str] | None = None,
 ) -> list[SearchResult]:
     compiled_repository = _coerce_repository(repository)
     manifest = load_repository_manifest(compiled_repository)
-    pattern = _compile_search_pattern(query, use_regex=use_regex)
+    patterns = [_compile_search_pattern(query, use_regex=use_regex) for query in queries]
     results: list[SearchResult] = []
 
     for session_id, metadata in manifest.sessions.items():
@@ -88,26 +89,45 @@ def search_compiled_repository(
             continue
         artifact_path = compiled_repository.root / metadata.artifact_relpath
         session_payload = _load_session_payload(artifact_path)
+        
+        session_hit_patterns: set[int] = set()
+        session_results: list[SearchResult] = []
+
         for block in session_payload["blocks"]:
             search_text = str(block.get("search_text", ""))
             block_type = str(block["block_type"])
             if block_types is not None and block_type not in block_types:
                 continue
-            if not pattern.search(search_text):
+            
+            block_hit_patterns: set[int] = set()
+            first_match_text = ""
+            
+            for i, pattern in enumerate(patterns):
+                if pattern.search(search_text):
+                    block_hit_patterns.add(i)
+                    session_hit_patterns.add(i)
+                    if not first_match_text:
+                        first_match_text = _build_match_text(block=block, pattern=pattern)
+
+            if not block_hit_patterns:
                 continue
 
-            match_text = _build_match_text(block=block, pattern=pattern)
-            score = _score_block_match(search_text=search_text, query=query, pattern=pattern, use_regex=use_regex)
-            results.append(
+            score = _score_block_match(search_text=search_text, queries=queries, patterns=patterns, use_regex=use_regex)
+            session_results.append(
                 SearchResult(
                     session_id=session_id,
                     block_id=str(block["block_id"]),
                     block_type=block_type,
-                    match_text=match_text,
+                    match_text=first_match_text,
                     anchor=SearchAnchor(session_id=session_id, block_id=str(block["block_id"])),
                     score=score,
                 )
             )
+            
+        if query_logic == "and" and len(session_hit_patterns) < len(patterns):
+            continue
+            
+        results.extend(session_results)
 
     return sorted(
         results,
@@ -311,21 +331,26 @@ def _compile_search_pattern(query: str, *, use_regex: bool) -> re.Pattern[str]:
     return re.compile(re.escape(query), flags)
 
 
-def _score_block_match(*, search_text: str, query: str, pattern: re.Pattern[str], use_regex: bool) -> int:
+def _score_block_match(*, search_text: str, queries: tuple[str, ...], patterns: list[re.Pattern[str]], use_regex: bool) -> int:
+    score = 0
     if use_regex:
-        return 1 if pattern.search(search_text) else 0
+        for pattern in patterns:
+            if pattern.search(search_text):
+                score += 1
+        return score
 
     lowered = search_text.lower()
-    lowered_query = query.lower().strip()
-    score = 0
-    if lowered_query and lowered_query in lowered:
-        score += 4
+    
+    for query in queries:
+        lowered_query = query.lower().strip()
+        if lowered_query and lowered_query in lowered:
+            score += 4
 
-    terms = [term for term in re.split(r"\s+", lowered_query) if term]
-    if len(terms) > 1:
-        score += sum(1 for term in set(terms) if term in lowered)
-    else:
-        score += 1
+        terms = [term for term in re.split(r"\s+", lowered_query) if term]
+        if len(terms) > 1:
+            score += sum(1 for term in set(terms) if term in lowered)
+        else:
+            score += 1
     return score
 
 

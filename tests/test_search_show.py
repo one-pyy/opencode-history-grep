@@ -229,7 +229,7 @@ def test_search_compiled_repository_returns_block_results_across_sessions(tmp_pa
     reader = HistoryReader(database_path)
     compile_all_sessions(reader, repository_path)
 
-    results = search_compiled_repository(repository_path, "needle")
+    results = search_compiled_repository(repository_path, ("needle",))
 
     assert len(results) == 2
     assert {(result.session_id, result.block_type) for result in results} == {
@@ -248,7 +248,7 @@ def test_search_compiled_repository_de_noises_same_block_hits_and_windows_tool_r
     reader = HistoryReader(database_path)
     compile_all_sessions(reader, repository_path)
 
-    results = search_compiled_repository(repository_path, "needle")
+    results = search_compiled_repository(repository_path, ("needle",))
 
     user_result = next(result for result in results if result.block_type == "user_text")
     tool_result = next(result for result in results if result.block_type == "tool_result")
@@ -266,7 +266,7 @@ def test_show_compiled_context_resolves_anchor_from_search_result(tmp_path: Path
 
     reader = HistoryReader(database_path)
     compile_all_sessions(reader, repository_path)
-    results = search_compiled_repository(repository_path, "needle")
+    results = search_compiled_repository(repository_path, ("needle",))
     tool_result = next(result for result in results if result.block_type == "tool_result")
 
     shown = show_compiled_context(repository_path, SearchAnchor(tool_result.session_id, tool_result.block_id))
@@ -285,7 +285,7 @@ def test_search_compiled_repository_supports_regex_and_cross_line_matches(tmp_pa
     reader = HistoryReader(database_path)
     compile_all_sessions(reader, repository_path)
 
-    results = search_compiled_repository(repository_path, r"line before\nneedle match", use_regex=True)
+    results = search_compiled_repository(repository_path, (r"line before\nneedle match",), use_regex=True)
 
     assert len(results) == 1
     assert results[0].block_type == "tool_result"
@@ -302,7 +302,7 @@ def test_search_compiled_repository_supports_block_type_filters(tmp_path: Path) 
 
     results = search_compiled_repository(
         repository_path,
-        "needle",
+        ("needle",),
         block_types=normalize_block_type_filters(["user", "tool"]),
     )
 

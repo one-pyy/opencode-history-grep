@@ -29,8 +29,9 @@ Use this skill only in these cases:
 
 ### `grep`
 
-- `--query`: the search expression
+- `--query`: the search expression; repeatable
 - `--regex`: interpret `--query` as regex; supports cross-line matching
+- `--logic`: how multiple `--query` parameters combine (`and` or `or`, default is `or`)
 - `--type`: filter by block type; repeatable
 - `--directory`: filter by session working directory
 - `--since` / `--until`: filter by time window
@@ -77,7 +78,21 @@ Different filter dimensions should be read as **AND**:
 - `--directory` + `--since/--until` means the same session must satisfy both directory and time constraints.
 - `--type` + `--query` means returned results must both belong to the allowed type range and match the query.
 
-`--type` itself is a union within the type dimension:
+### Multiple `--query` parameters
+
+You can provide multiple `--query` parameters. How they combine depends on `--logic`:
+
+- `--logic or` (default): results are sorted by how many queries they match.
+- `--logic and`: only keeps results from sessions that match **all** provided queries somewhere in the session.
+
+Do **not** split query words with spaces if you want an AND search across the session. Instead, pass multiple `--query` flags:
+
+```bash
+# Correct session-level AND
+opencode-history-grep grep --query "sqlite" --query "history" --logic and
+```
+
+### Multiple `--type` parameters
 
 - `--type user --type tool`
 
@@ -132,12 +147,20 @@ opencode-history-grep grep --regex --type tool_result --query "line before\nneed
 Use when the first search returns too much and you need to constrain both “who said it” and “what kind of action it was”.
 
 ```bash
-opencode-history-grep grep --regex --type message --type tool_call --query "history[_ -]?grep|compile|show"
+opencode-history-grep grep --type message --type tool_call --query "history grep" --query "show" --logic or
 ```
 
 Here `message` and `tool_call` form the allowed type range together. Any matching block from those types can appear if it also satisfies the other filters.
 
-### Scenario 7: move to the next page
+### Scenario 7: require multiple terms in the same session
+
+Use when you want to find a session discussing two specific concepts, even if they appear in different blocks.
+
+```bash
+opencode-history-grep grep --query "sqlite" --query "compilation" --logic and
+```
+
+### Scenario 8: move to the next page
 
 Use when the result set is broad and you need the next page.
 
@@ -145,7 +168,7 @@ Use when the result set is broad and you need the next page.
 opencode-history-grep grep --regex --query "history|grep" --page 2
 ```
 
-### Scenario 8: reopen context around a hit
+### Scenario 9: reopen context around a hit
 
 Use when you already have a hit with `session` and `anchor`.
 
@@ -153,7 +176,7 @@ Use when you already have a hit with `session` and `anchor`.
 opencode-history-grep show --session <session-id> --anchor <block-id> --before 5 --after 5
 ```
 
-### Scenario 9: read a whole session (recommended first)
+### Scenario 10: read a whole session (recommended first)
 
 Use when you already know the session id and want the whole compiled session, but do **not** want to immediately expand every long text or tool output.
 
@@ -161,7 +184,7 @@ Use when you already know the session id and want the whole compiled session, bu
 opencode-history-grep show --session <session-id> --all
 ```
 
-### Scenario 10: read a whole session with full text (use carefully)
+### Scenario 11: read a whole session with full text (use carefully)
 
 Use this only when the default truncated view is not enough and you explicitly need long raw block content.
 
@@ -170,6 +193,14 @@ opencode-history-grep show --session <session-id> --all --full-text
 ```
 
 Warning: `--full-text` can expand very long text and tool output, making results much longer and harder to skim. Prefer not to use it unless necessary.
+
+### Scenario 12: audit AI behavior
+
+Use when you want to review another AI's execution process. You can pass the `session-id` and have another AI review its steps, logic, and tool usage to see if it made any errors.
+
+```bash
+opencode-history-grep show --session <session-id> --all --full-text
+```
 
 ## How to narrow wide results
 

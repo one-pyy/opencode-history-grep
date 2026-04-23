@@ -315,13 +315,26 @@ def _render_mapping_item(*, key: str, value: Any, indent: int) -> list[str]:
 
 def _limit_text(text: str) -> str:
     lines = text.splitlines()
-    limited = lines[:TOOL_RESULT_SUMMARY_MAX_LINES]
-    result = "\n".join(limited)
-    if len(result) > TOOL_RESULT_SUMMARY_MAX_CHARS:
-        result = result[: TOOL_RESULT_SUMMARY_MAX_CHARS - 1].rstrip() + "…"
-    elif len(lines) > TOOL_RESULT_SUMMARY_MAX_LINES:
-        result = result.rstrip() + "\n…"
-    return result
+    
+    if len(lines) <= 10:
+        if len(text) <= 1000:
+            return text
+        
+        omitted_chars = len(text) - 1000
+        return text[:500].rstrip() + f"\n... ({omitted_chars} chars omitted) ...\n" + text[-500:].lstrip()
+
+    head_lines = lines[:5]
+    head_text = "\n".join(head_lines)
+    if len(head_text) > 500:
+        head_text = head_text[:499].rstrip() + "…"
+
+    tail_lines = lines[-5:]
+    tail_text = "\n".join(tail_lines)
+    if len(tail_text) > 500:
+        tail_text = "…" + tail_text[-499:].lstrip()
+
+    omitted_lines = len(lines) - 10
+    return f"{head_text}\n... ({omitted_lines} lines omitted) ...\n{tail_text}"
 
 
 def _sanitize_text(text: str) -> str:

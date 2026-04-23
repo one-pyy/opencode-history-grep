@@ -18,6 +18,7 @@ It is designed for history recall tasks such as:
 - “How did we implement this before?”
 - “Where did that error show up?”
 - “What exact command or tool output did we see?”
+- **AI Behavior Audit**: Pass a `session-id` to another AI so it can review the execution process, check for mistakes, and evaluate tool usage.
 
 ### Inspiration
 
@@ -132,6 +133,7 @@ The skill is intended for cases where a user refers to something done in the pas
 - “这个功能以前怎么做过？”
 - “那个报错之前出现在哪？”
 - “当时跑过什么命令，工具输出是什么？”
+- **AI 运行审查**：传入 `session-id`，让另一个 AI 审查之前的运行过程，检查是否有出错或不合理的工具调用。
 
 ### 灵感来源
 
