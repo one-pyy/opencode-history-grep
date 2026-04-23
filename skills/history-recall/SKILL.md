@@ -24,6 +24,7 @@ Use this skill only in these cases:
 - Default compiled repository: `/root/.local/share/opencode-history-grep`
 - Default results are paginated: 10 per page, with `page a/b`
 - Result lists are meant to be judged by `match`, not by a generated summary.
+- Current `grep` is text matching, not semantic retrieval.
 
 ## Parameter quick reference
 
@@ -33,7 +34,7 @@ Use this skill only in these cases:
 - `--regex`: interpret `--query` as regex; supports cross-line matching
 - `--logic`: how multiple `--query` parameters combine (`and` or `or`, default is `or`)
 - `--type`: filter by block type; repeatable
-- `--directory`: filter by session working directory
+- `--directory`: filter by session working directory; it matches the directory itself or any child directory with that path as a prefix
 - `--since` / `--until`: filter by time window
 - `--page`: switch pages
 - `--page-size`: change page size
@@ -78,6 +79,20 @@ Different filter dimensions should be read as **AND**:
 - `--directory` + `--since/--until` means the same session must satisfy both directory and time constraints.
 - `--type` + `--query` means returned results must both belong to the allowed type range and match the query.
 
+## Directory filtering guidance
+
+- Use `--directory` when the project path is clear and you want sessions from that project tree.
+- `--directory /a/b` matches sessions whose working directory is exactly `/a/b` or is under `/a/b/...`.
+- If the project path is unclear, do **not** guess a directory filter. Reason: a wrong `--directory` can hide the relevant history completely.
+
+## Query wording guidance
+
+- `grep` is text matching, so wording matters.
+- If the first search misses, try nearby phrasings, common synonyms, and alternative keyword combinations instead of only changing filters.
+- If the user is clearly communicating in English, search English first.
+- If there are signs the earlier work may have used Chinese, also try Chinese and English variants.
+- If results are too broad, then narrow with `--type`, `--since/--until`, `--directory`, or a tighter `--regex`.
+
 ### Multiple `--query` parameters
 
 You can provide multiple `--query` parameters. How they combine depends on `--logic`:
@@ -105,6 +120,8 @@ If matches from these types appear in the same session, they can appear separate
 ### Scenario 1: find earlier explanations or conclusions in a project
 
 Use when the user asks things like “why did we do this before?” or “did we discuss this plan last time?”
+
+Only add `--directory` if the project path is actually known.
 
 ```bash
 opencode-history-grep grep --regex --directory /root/_/opencode --type assistant --query "sqlite.*history|history.*sqlite"
@@ -209,8 +226,9 @@ Prefer these moves first:
 - add `--type assistant`
 - or switch to `--type user`
 - add `--since/--until`
-- add `--directory`
+- add `--directory` only when the project path is clear
 - write a tighter regex
+- try nearby wording, synonyms, and Chinese / English variants when the first query misses
 
 Do not immediately open many `show` commands.
 

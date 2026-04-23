@@ -39,7 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_REPOSITORY_DIRNAME,
         help="Path to the local compiled repository.",
     )
-    _ = compile_parser.add_argument("--directory", dest="directory", help="Restrict sessions to a workspace directory prefix.")
+    _ = compile_parser.add_argument(
+        "--directory",
+        dest="directory",
+        help="Restrict sessions to this workspace directory or any child directory with the same path prefix.",
+    )
     _ = compile_parser.add_argument("--since", dest="since", help="Restrict sessions to updated/effective time on or after this ISO date/time.")
     _ = compile_parser.add_argument("--until", dest="until", help="Restrict sessions to updated/effective time on or before this ISO date/time.")
 
@@ -56,7 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_REPOSITORY_DIRNAME,
         help="Path to the local compiled repository.",
     )
-    _ = grep_parser.add_argument("--directory", dest="directory", help="Restrict search to sessions under this workspace directory prefix.")
+    _ = grep_parser.add_argument(
+        "--directory",
+        dest="directory",
+        help="Restrict search to sessions in this workspace directory or any child directory with the same path prefix.",
+    )
     _ = grep_parser.add_argument("--since", dest="since", help="Restrict search to sessions on or after this ISO date/time.")
     _ = grep_parser.add_argument("--until", dest="until", help="Restrict search to sessions on or before this ISO date/time.")
 
@@ -154,6 +162,7 @@ def _run_grep(
     )
     if not results:
         print(f'No matches found for {queries!r}.')
+        _print_no_match_hints(use_regex=use_regex)
         return 0
 
     page_result = paginate_search_results(results, page=page, page_size=page_size)
@@ -259,6 +268,14 @@ def _print_result_hints(
     print("narrowing hints:")
     for hint in hints:
         print(f"- {hint}")
+
+
+def _print_no_match_hints(*, use_regex: bool) -> None:
+    print("search hints:")
+    print("- try nearby wording or common synonyms")
+    print("- if earlier work may have mixed Chinese and English, try both Chinese and English keywords")
+    if not use_regex:
+        print("- try --regex for tighter phrase or multi-line matching")
 
 
 if __name__ == "__main__":

@@ -302,6 +302,22 @@ def test_compile_command_supports_directory_filter(tmp_path: Path) -> None:
     assert "session-other" not in output
 
 
+def test_directory_help_describes_root_and_child_prefix_matching() -> None:
+    parser = cli.build_parser()
+
+    compile_help = parser._subparsers._group_actions[0].choices["compile"].format_help()
+    grep_help = parser._subparsers._group_actions[0].choices["grep"].format_help()
+
+    assert "workspace directory" in compile_help
+    assert "child directory" in compile_help
+    assert "same path prefix" in compile_help
+    assert "this workspace" in grep_help
+    assert "directory or any child directory" in grep_help
+    assert "child directory" in grep_help
+    assert "same path" in grep_help
+    assert "prefix" in grep_help
+
+
 def test_grep_command_supports_directory_and_time_filters(tmp_path: Path) -> None:
     database_path = tmp_path / "history.db"
     repository_path = tmp_path / "compiled_repo"
@@ -326,6 +342,22 @@ def test_grep_command_supports_directory_and_time_filters(tmp_path: Path) -> Non
     assert exit_code == 0
     assert "session=session-cli" in output
     assert "session=session-other" not in output
+
+
+def test_grep_command_prints_text_match_hints_when_no_results(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+    exit_code, output = _run_cli(["grep", "--repository", str(repository_path), "--query", "missing-keyword"])
+
+    assert exit_code == 0
+    assert "No matches found" in output
+    assert "search hints:" in output
+    assert "try nearby wording or common synonyms" in output
+    assert "try both Chinese and English keywords" in output
+    assert "try --regex for tighter phrase or multi-line matching" in output
 
 
 def test_grep_command_can_refresh_repository_from_db(tmp_path: Path) -> None:
