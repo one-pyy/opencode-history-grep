@@ -14,7 +14,7 @@
 对外话术应收口为：
 
 - **日常搜索：直接 `grep`**
-- **`grep` 会自动 compile / refresh，一般无需手动 `compile`**
+- **`grep` 和 `show` 都会自动 compile / refresh，一般无需手动 `compile`**
 - **显式备库 / 离线准备 / 范围受控仓库：才单独用 `compile`**
 
 默认推荐的类型筛选应优先教：
@@ -46,8 +46,8 @@
    - 是否应按当前项目目录筛选；`--directory` 的语义是“匹配当前目录本身，或以该目录为前缀的所有子目录”
    - 如果当前项目路径不明确，就不要指定 `--directory`，否则可能因为过滤过窄而搜不到本来存在的命中
    - 是否应按用户提到的时间窗口筛选
-2. **默认让 `grep` 先自动 refresh repository**
-    - `grep` 默认使用 `/root/.local/share/opencode/opencode.db`
+2. **默认让 `grep` / `show` 先自动 refresh repository**
+    - `grep` 和 `show` 默认使用 `/root/.local/share/opencode/opencode.db`
     - 单独 `compile` 主要用于显式准备仓库或做离线搜索
 3. **再做 `grep`**
     - 不直接扫原始历史
@@ -55,7 +55,8 @@
    - 因为当前 `grep` 使用文本匹配，query 应多尝试近义词、不同说法和关键词组合
    - 如果用户当前明确用英文沟通，默认先搜英文；如果上下文里有中文使用迹象，再补搜中文 / 英文两组词
 4. **最后 `show`**
-    - 只对值得继续看的命中结果回跳完整上下文
+   - `show` 也应先自动 compile / refresh，避免回看已知 session 时读到旧 compiled view
+   - 只对值得继续看的命中结果回跳完整上下文
 
 ## skill 应明确告诉模型的边界
 

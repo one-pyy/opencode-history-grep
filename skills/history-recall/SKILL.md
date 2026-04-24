@@ -19,7 +19,7 @@ Use this skill only in these cases:
 ## Remember these defaults
 
 - Daily recall usually starts with `grep`.
-- `grep` automatically compiles / refreshes history, so manual `compile` is usually unnecessary.
+- `grep` and `show` automatically compile / refresh history, so manual `compile` is usually unnecessary.
 - Default upstream SQLite: `/root/.local/share/opencode/opencode.db`
 - Default compiled repository: `/root/.local/share/opencode-history-grep`
 - Default results are paginated: 10 per page, with `page a/b`
@@ -41,6 +41,7 @@ Use this skill only in these cases:
 
 ### `show`
 
+- automatically compiles / refreshes history before reading compiled sessions
 - `--session`: session id
 - `--anchor`: anchor from a grep hit
 - `--before` / `--after`: how many blocks to show around an anchor

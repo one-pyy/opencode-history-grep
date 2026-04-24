@@ -33,6 +33,7 @@ The main idea borrowed from VCC is: **compile conversation history into better r
 - Default upstream SQLite: `/root/.local/share/opencode/opencode.db`
 - Default compiled repository: `/root/.local/share/opencode-history-grep`
 - `grep` automatically refreshes the compiled repository before searching
+- `show` automatically refreshes the compiled repository before reading a session or anchor
 - unchanged sessions are skipped during refresh
 - default search output is paginated (`10` results per page)
 - search results emphasize `match`, not a fragile first-line summary
@@ -148,6 +149,7 @@ The skill is intended for cases where a user refers to something done in the pas
 - 默认 upstream SQLite：`/root/.local/share/opencode/opencode.db`
 - 默认 compiled repository：`/root/.local/share/opencode-history-grep`
 - `grep` 会在搜索前自动 refresh compiled repository
+- `show` 会在读取 session 或 anchor 前自动 refresh compiled repository
 - 未变化的 session 会在 refresh 时跳过
 - 默认每页 10 条结果
 - 结果页主看 `match`，不依赖脆弱的一行摘要
