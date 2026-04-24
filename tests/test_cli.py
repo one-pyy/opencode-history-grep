@@ -261,6 +261,7 @@ def test_show_command_highlights_focus_block(tmp_path: Path) -> None:
     _create_history_db(database_path)
     _run_cli(["compile", "--db", str(database_path), "--repository", str(repository_path)])
 
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
     exit_code, output = _run_cli(
         [
             "show",
@@ -276,6 +277,30 @@ def test_show_command_highlights_focus_block(tmp_path: Path) -> None:
     assert exit_code == 0
     assert "session=session-cli anchor=message-assistant:0002" in output
     assert ">>> [tool_result]" in output
+    assert "needle match line" in output
+
+
+def test_show_command_can_refresh_repository_from_db(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--anchor",
+            "message-assistant:0002",
+            "--repository",
+            str(repository_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert (repository_path / "manifest.json").exists()
+    assert "session=session-cli anchor=message-assistant:0002" in output
     assert "needle match line" in output
 
 
@@ -491,17 +516,91 @@ def test_grep_command_supports_message_alias(tmp_path: Path) -> None:
     assert "[tool_result]" not in output
 
 
-def test_show_command_supports_all_and_full_text(tmp_path: Path) -> None:
+def test_show_command_defaults_all_view_to_message_blocks(tmp_path: Path) -> None:
     database_path = tmp_path / "history.db"
     repository_path = tmp_path / "compiled_repo"
     _create_history_db(database_path)
     _run_cli(["compile", "--db", str(database_path), "--repository", str(repository_path)])
 
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
     exit_code, output = _run_cli(["show", "--session", "session-cli", "--repository", str(repository_path), "--all", "--full-text"])
 
     assert exit_code == 0
     assert "[user_text]" in output
+    assert "[assistant_text]" in output
+    assert "[tool_result]" not in output
+
+
+def test_show_command_supports_all_type_and_full_text(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    _run_cli(["compile", "--db", str(database_path), "--repository", str(repository_path)])
+
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+    exit_code, output = _run_cli(["show", "--session", "session-cli", "--repository", str(repository_path), "--all", "--type", "all", "--full-text"])
+
+    assert exit_code == 0
+    assert "[user_text]" in output
     assert "[tool_result]" in output
+
+
+def test_show_command_supports_block_id_range_for_all_view(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    _run_cli(["compile", "--db", str(database_path), "--repository", str(repository_path)])
+
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "all",
+            "--from",
+            "message-assistant:0001",
+            "--to",
+            "message-assistant:0002",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "[assistant_text]" in output
+    assert "[tool_result]" in output
+    assert "[user_text]" not in output
+
+
+def test_show_command_supports_open_ended_block_index_range(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    _run_cli(["compile", "--db", str(database_path), "--repository", str(repository_path)])
+
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "message",
+            "--from",
+            "1",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "[assistant_text]" in output
+    assert "[user_text]" not in output
+    assert "[tool_result]" not in output
 
 
 def test_show_command_supports_custom_before_after(tmp_path: Path) -> None:
@@ -510,6 +609,7 @@ def test_show_command_supports_custom_before_after(tmp_path: Path) -> None:
     _create_history_db(database_path)
     _run_cli(["compile", "--db", str(database_path), "--repository", str(repository_path)])
 
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
     exit_code, output = _run_cli(
         [
             "show",

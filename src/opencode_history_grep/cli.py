@@ -74,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
     _ = show_parser.add_argument("--before", dest="before", type=int, default=1, help="Blocks to show before the focus anchor. Default: 1")
     _ = show_parser.add_argument("--after", dest="after", type=int, default=1, help="Blocks to show after the focus anchor. Default: 1")
     _ = show_parser.add_argument("--all", dest="show_all", action="store_true", help="Show the full compiled session view.")
+    _ = show_parser.add_argument("--from", dest="from_block", help="With --all, start at this block id or zero-based block index.")
+    _ = show_parser.add_argument("--to", dest="to_block", help="With --all, end at this block id or zero-based block index.")
+    _ = show_parser.add_argument("--type", dest="show_type", choices=["message", "all"], default="message", help="Show message blocks only, or all blocks including tools. Default: message")
     _ = show_parser.add_argument("--full-text", dest="full_text", action="store_true", help="Do not truncate long block display text.")
     _ = show_parser.add_argument(
         "--repository",
@@ -118,6 +121,9 @@ def main(argv: list[str] | None = None) -> int:
             before=max(0, int(args.before)),
             after=max(0, int(args.after)),
             show_all=bool(args.show_all),
+            from_block=args.from_block,
+            to_block=args.to_block,
+            show_type=str(args.show_type),
             full_text=bool(args.full_text),
             repository_path=args.repository_path,
         )
@@ -191,13 +197,29 @@ def _run_show(
     before: int,
     after: int,
     show_all: bool,
+    from_block: str | None,
+    to_block: str | None,
+    show_type: str,
     full_text: bool,
     repository_path: str,
 ) -> int:
+    reader = HistoryReader(DEFAULT_UPSTREAM_DATABASE)
+    repository = open_compiled_repository(repository_path)
+    compile_all_sessions(reader, repository, session_filter=None)
     repository = open_compiled_repository(repository_path)
     if show_all:
-        shown = show_session_compiled_view(repository, session_id, full_text=full_text)
+        block_types = normalize_block_type_filters([show_type]) if show_type != "all" else None
+        shown = show_session_compiled_view(
+            repository,
+            session_id,
+            full_text=full_text,
+            block_types=block_types,
+            from_block=from_block,
+            to_block=to_block,
+        )
     else:
+        if from_block is not None or to_block is not None:
+            raise SystemExit("show --from/--to requires --all.")
         if not isinstance(anchor_id, str):
             raise SystemExit("show requires --anchor unless --all is set.")
         shown = show_compiled_context(
