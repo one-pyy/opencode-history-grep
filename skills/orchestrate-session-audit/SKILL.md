@@ -2,16 +2,16 @@
 
 ## Skill Definition
 
-Activate this skill when you need to orchestrate a full session-audit loop: discover the target `session_id`, delegate the audit to a child reviewer, continue the same child session if it gets interrupted, then review the child reviewer session itself for process holes or missed findings.
+Activate this skill when you need to orchestrate a full session-audit loop: discover the target `session_id`, delegate the audit to a child reviewer, continue the same child session if it gets interrupted, read the produced audit artifact, and decide whether rectification can begin.
 
 ## Core Purpose
 
 This is the **caller-side companion skill** for `audit-session`.
 
 - `audit-session` defines how the delegated reviewer performs the audit.
-- `orchestrate-session-audit` defines how the caller finds the session, launches the reviewer, resumes an interrupted reviewer, and audits the reviewer process itself.
+- `orchestrate-session-audit` defines how the caller finds the session, launches the reviewer, resumes an interrupted reviewer, reads the audit artifact, and decides whether the artifact is usable.
 - Audit artifacts live under `.sisyphus/tmp/audit/` and must be run-scoped, not session-scoped singleton files.
-- The review flow uses `show --type message` first to reconstruct requirements, then `show --type all` / `--full-text` to verify whether tool execution matched those requirements.
+- The review flow uses `show --type message` first to reconstruct requirements and write the audit template, then `show --type all --full-text` to verify whether tool execution matched those requirements.
 
 ---
 
@@ -77,21 +77,44 @@ The delegated child must return only the audit markdown file path. Read that fil
 - The audited agent must read this markdown artifact before attempting rectification. The path alone is not enough; rectification starts only after the audited agent has read the file contents and understood the abnormal annotations.
 - If the audit file contains abnormal markers, each marker must include a concrete reason. If any marker is a bare `[异常]` without a cause, treat the reviewer output as incomplete and send the same child reviewer back to fix the artifact.
 
-### 5. Audit the child reviewer session itself
+### 5. Inspect the child reviewer session only on artifact/process anomalies
 
-After reading the audit result, inspect the child reviewer session to check whether the reviewer process itself had holes.
+After reading the audit result, do not routinely inspect the child reviewer session. The normal path is: accept a well-formed audit artifact as the handoff contract and move to rectification.
+
+Inspect the child reviewer session only when there is a concrete anomaly, for example:
+
+- the child did not return a run-scoped audit file path
+- the returned file is missing or cannot be read
+- the audit file contains bare `[异常]` markers without reasons
+- the audit file has checked boxes in the initial template without evidence of second-pass verification
+- the audit findings contradict the caller's known facts or omit an explicit audit focus
+- the child was interrupted and continuation behavior needs verification
+
+If such an anomaly exists, inspect the child reviewer session with this history-based discipline:
 
 - Use the same history-based review discipline:
   - first load `history-recall` if it is not already loaded
   - if the child `session_id` is already known, start with `opencode-history-grep show --session <child-session-id> --all --type message`
-  - then run `opencode-history-grep show --session <child-session-id> --all --type all`
+  - then analyze the child reviewer's stated intent, phase boundaries, and whether it wrote the run-scoped audit template before judging tools
   - then run `opencode-history-grep show --session <child-session-id> --all --type all --full-text` before making any judgment
-  - if the child `session_id` is not known, first use `opencode-history-grep grep` to locate it, then inspect it with the same message → all → all full-text sequence
+  - if the child `session_id` is not known, first use `opencode-history-grep grep` to locate it, then inspect it with the same message → template/intent → full-text sequence
   - if you only need to inspect operations after a known block, use `show --session <child-session-id> --all --type all --from <block-id-or-index> --full-text`; use `--to <block-id-or-index>` when the review window has a known endpoint
-  - inspect whether it followed `audit-session`, especially whether it used the message-only pass for requirement/phase reconstruction and the full-text all-block pass for execution judgment
+  - inspect whether it followed `audit-session`, especially whether it used the message-only pass for requirement/phase reconstruction, wrote the initial audit template before tool judgment, and used the full-text all-block pass for execution judgment
   - check whether it skipped deep dives, faked verification, guessed collapsed content, judged tools from message-only output, or drifted from the path-only output contract
+- Do not insert a truncated `show --session <child-session-id> --all --type all` overview between the message pass and full-text pass. Reason: reviewer-process judgment should follow the same current audit discipline: preserve message-level intent first, then judge from full-text evidence.
 - If the child session was interrupted and later continued, audit the continued session chain as one logical reviewer run.
-- Treat the child's execution history as the primary evidence source. The goal here is to review the child's actual steps, not just its final conclusion.
+- Treat the child's execution history as anomaly evidence, not as a mandatory second audit layer. Reason: routine self-auditing of every reviewer run creates recursive overhead and distracts from rectifying the audited session.
+
+### 5.1 Compression boundary after audit-artifact acceptance
+
+After the audit artifact has been read and accepted as usable, compression is allowed only if all durable handoff facts already exist outside the soon-to-be-compressed history:
+
+- the produced audit file path has been read and stated or written into the current working context
+- the rectification goals are available from the audit file or a durable note
+- the artifact quality verdict has been stated clearly, or the anomaly that forced child-session inspection has been stated clearly
+- the bridge record that points to the audit file and explains its role will remain visible
+
+Do not compress before reading the produced audit markdown. Do not compress away the bridge record. Reason: the audited agent must be able to resume from the audit artifact and rectification goals without rediscovering audit handoff context.
 
 ### 6. Iterate only on real holes
 
@@ -109,20 +132,25 @@ Do **not** iterate just to restate the same conclusion. Iterate only when there 
 - **MUST**: Require the audited agent to read the produced markdown file before doing rectification work.
 - **MUST**: Treat bare `[异常]` markers as incomplete reviewer output; abnormal annotations must state the reason so the audited agent can fix the issue from the markdown alone.
 - **MUST**: Treat the returned audit artifact path as run-scoped. Different audit runs for the same session may legitimately produce different files under `.sisyphus/tmp/audit/`.
-- **MUST**: When reviewing the child reviewer process, use `history-recall` plus `opencode-history-grep show/grep` as the primary workflow.
-- **MUST**: If the child `session_id` is already known, skip discovery grep and start directly from `show --session <child-session-id> --all --type message`, followed by `--type all`, then `--type all --full-text` before making any judgment.
+- **MUST**: Inspect the child reviewer session only when the audit artifact or child handoff has a concrete anomaly.
+- **MUST**: When anomaly-reviewing the child reviewer process, use `history-recall` plus `opencode-history-grep show/grep` as the primary workflow.
+- **MUST**: If anomaly review is needed and the child `session_id` is already known, skip discovery grep and start directly from `show --session <child-session-id> --all --type message`, then inspect whether it wrote the audit template before running `--type all --full-text` for judgment.
+- **MUST**: Preserve or state the audit artifact path and rectification goals before compressing any reviewer-process history.
 - **MUST**: If the target `session_id` is unknown, locate it with `opencode-history-grep grep --query "<exact user quote>" --type user --page-size 5` before delegating.
 - **NEVER**: Spawn a fresh reviewer child when direct continuation of the interrupted child is still possible. Reason: that discards context and makes the audit chain harder to verify.
 - **NEVER**: Use native `session_read` / `session_info` as the primary evidence path for reviewing the child execution process. Reason: this workflow is specifically validating history-based audit behavior, so the child's actual execution trace should be inspected through the same grep/show history pipeline.
 - **NEVER**: Use `session_list`, date listing, or project-path listing to discover the current session. Reason: those listings can miss active or differently rooted sessions; exact user-quote grep is the reliable discovery path for this workflow.
 - **NEVER**: Use discovery grep when the child `session_id` is already known. Reason: that needlessly downgrades an inspection problem into a search problem and makes it easier to miss parts of the reviewer run.
-- **NEVER**: Judge the reviewer process only from its final answer. Reason: the path-only output intentionally hides the process; you must inspect the reviewer session itself.
+- **NEVER**: Routinely audit the reviewer session when the returned audit artifact is readable, well-formed, and evidence-backed. Reason: reviewer self-audit should be an exception path, not recursive default overhead.
+- **NEVER**: If anomaly review is required, judge the reviewer process only from its final answer. Reason: the path-only output intentionally hides the process; anomaly review must inspect the reviewer session itself.
 - **NEVER**: Judge tool compliance from `--type message` output. Reason: message-only output intentionally hides tool calls and tool results.
+- **NEVER**: Insert a truncated `--type all` overview as a required reviewer-process audit step. Reason: current audit flow intentionally goes from message-level intent analysis to full-text execution evidence.
+- **NEVER**: Compress away the only bridge from the conversation to the audit file. Reason: without that bridge, later rectification may lose which artifact is authoritative.
 
 ## Output
 
 Unless the caller explicitly asks for prose, the end state of this orchestration is:
 
 1. a completed audit file for the target session
-2. a reviewed child-auditor session
-3. a decision on whether another iteration is necessary
+2. a decision that the audit artifact is usable, or a concrete anomaly report if it is not
+3. a decision on whether rectification can begin or another reviewer iteration is necessary

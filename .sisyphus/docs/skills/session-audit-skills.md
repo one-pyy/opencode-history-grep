@@ -20,20 +20,43 @@
 
 `audit-session` 是 reviewer 侧规程：给定 `session_id` 后，它负责读取历史、拆阶段、写 run-scoped 审查文件、二次验证并输出审查文件路径。
 
-`orchestrate-session-audit` 是 caller 侧规程：它负责发现目标 `session_id`、委派 reviewer、在中断时续同一 reviewer 会话、读取审查文件，并审查 reviewer 自己的执行过程是否符合 `audit-session`。
+`orchestrate-session-audit` 是 caller 侧规程：它负责发现目标 `session_id`、委派 reviewer、在中断时续同一 reviewer 会话、读取审查文件，并判断审查产物是否可用于整改。
 
-## 审查读取顺序
+## 审查读取与落盘顺序
 
-session 审查使用三段式读取顺序：
+session 审查使用“先固定意图，再看执行证据”的顺序：
 
 1. `opencode-history-grep show --session <id> --all --type message`
-   - 用于需求、判断、方案和阶段边界重建。
-2. `opencode-history-grep show --session <id> --all --type all`
-   - 用于把工具调用和工具输出映射回 message 层需求。
+   - 用于重建用户意图、需求变化、判断、方案和阶段边界。
+2. 写入 run-scoped 审查模板。
+   - 模板必须先记录 message 层意图分析和 Phase 边界。
+   - 此时不能判断工具执行是否合规，核验项必须保持未勾选。
 3. `opencode-history-grep show --session <id> --all --type all --full-text`
-   - 用于最终判断，不允许只靠截断输出下结论。
+   - 用作工具执行合规判断的 full-text 证据源。
+   - 不再要求先跑单独的截断版 `--type all` overview。
+4. 回读同一个审查文件并回填结论。
+   - 将未勾选项改成 `[x]` 或带原因的 `[异常: ...]`。
+   - 在文件末尾追加具体整改目标和修改建议。
 
-`--type message` 只显示用户与 assistant 对话块；`--type all` 显示工具调用和工具结果。审查工具执行是否相符时必须使用 `all`，不能从 `message` 输出推断工具行为。
+`--type message` 只显示用户与 assistant 对话块，适合固定需求和意图；`--type all --full-text` 显示工具调用和工具结果，适合最终判断执行是否相符。不能从 `message` 输出推断工具行为，也不能在写初始模板前让截断工具流影响意图分析。
+
+## Caller 侧产物验收与压缩边界
+
+`orchestrate-session-audit` 在拿到 reviewer 返回的审查文件路径后，必须先读取该 markdown。只拿到路径不等于已经理解整改目标。
+
+默认不复核 reviewer 会话本身。caller 只需要验收审查产物是否可用：路径是否是 run-scoped、文件是否可读、异常标注是否写明原因、整改目标是否具体、是否覆盖调用时指定的 audit focus。
+
+只有出现具体异常时才回看 reviewer 会话，例如：没有返回审查文件路径、文件缺失、裸 `[异常]`、初始模板疑似直接打勾、审查结果和已知事实冲突、漏掉明确 audit focus、或 child 中断续跑行为需要确认。
+
+需要异常复核 reviewer 会话时，如果 child `session_id` 已知，应按当前审查纪律读取：
+
+1. `opencode-history-grep show --session <child-session-id> --all --type message`
+2. 分析 reviewer 是否先重建意图、写初始审查模板，再判断工具执行
+3. `opencode-history-grep show --session <child-session-id> --all --type all --full-text`
+
+不应在 message pass 和 full-text pass 之间强制插入截断版 `--type all` overview。原因是 reviewer-process 异常复核也应先固定 message 层意图，再从 full-text 工具证据判断执行是否合规。
+
+验收审查产物后可以压缩过程记录，但必须先确保以下事实已经保存在当前上下文或持久文件里：审查文件路径、整改目标、产物可用性结论，以及指向审查文件的桥接记录。不能压掉唯一说明“哪个审查文件是权威整改来源”的记录。
 
 ## 会话定位规则
 
