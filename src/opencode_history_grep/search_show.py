@@ -205,9 +205,6 @@ def show_session_compiled_view(
     session_id: str,
     *,
     full_text: bool = False,
-    block_types: set[str] | None = None,
-    from_block: str | None = None,
-    to_block: str | None = None,
 ) -> ShowResult:
     compiled_repository = _coerce_repository(repository)
     manifest = load_repository_manifest(compiled_repository)
@@ -217,7 +214,6 @@ def show_session_compiled_view(
 
     artifact_path = compiled_repository.root / metadata.artifact_relpath
     session_payload = _load_session_payload(artifact_path)
-    ranged_blocks = _slice_blocks_by_range(session_payload["blocks"], from_block=from_block, to_block=to_block)
     blocks = tuple(
         ShowBlock(
             session_id=session_id,
@@ -226,42 +222,10 @@ def show_session_compiled_view(
             title=str(block["title"]),
             display_text=_show_display_text(block=block, full_text=full_text),
         )
-        for block in ranged_blocks
-        if block_types is None or str(block["block_type"]) in block_types
+        for block in session_payload["blocks"]
     )
     focus_block_id = str(blocks[0].block_id) if blocks else ""
     return ShowResult(anchor=SearchAnchor(session_id=session_id, block_id=focus_block_id), focus_block_id=focus_block_id, blocks=blocks)
-
-
-def _slice_blocks_by_range(
-    blocks: list[dict[str, Any]],
-    *,
-    from_block: str | None,
-    to_block: str | None,
-) -> list[dict[str, Any]]:
-    if from_block is None and to_block is None:
-        return blocks
-
-    start = _resolve_range_boundary(blocks, from_block, default=0) if from_block is not None else 0
-    end = _resolve_range_boundary(blocks, to_block, default=len(blocks) - 1) if to_block is not None else len(blocks) - 1
-    if start > end:
-        start, end = end, start
-    return blocks[start : end + 1]
-
-
-def _resolve_range_boundary(blocks: list[dict[str, Any]], value: str | None, *, default: int) -> int:
-    if value is None or value == "":
-        return default
-    normalized = value.strip()
-    if normalized.isdecimal():
-        index = int(normalized)
-        if index < 0 or index >= len(blocks):
-            raise KeyError(value)
-        return index
-    for index, block in enumerate(blocks):
-        if str(block["block_id"]) == normalized:
-            return index
-    raise KeyError(value)
 
 
 def _build_match_text(*, block: dict[str, Any], pattern: re.Pattern[str]) -> str:
