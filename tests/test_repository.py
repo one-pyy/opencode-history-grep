@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import fcntl
 from importlib import import_module
 import json
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -261,3 +263,35 @@ def test_compile_all_sessions_skips_unchanged_sessions(tmp_path: Path) -> None:
 
     assert first.compiled_session_ids == ("session-b", "session-a")
     assert second.compiled_session_ids == ()
+
+
+def test_compile_all_sessions_waits_for_repository_lock(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    repository_path.mkdir()
+    lock_path = repository_path / ".compile.lock"
+
+    src_path = str(Path(__file__).resolve().parents[1] / "src")
+    script = (
+        "import sys; "
+        f"sys.path.insert(0, {src_path!r}); "
+        "from opencode_history_grep.reader import HistoryReader; "
+        "from opencode_history_grep.repository import compile_all_sessions; "
+        f"compile_all_sessions(HistoryReader({str(database_path)!r}), {str(repository_path)!r})"
+    )
+
+    with lock_path.open("w", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        process = subprocess.Popen([sys.executable, "-c", script])
+        try:
+            assert process.wait(timeout=0.2) is None
+        except subprocess.TimeoutExpired:
+            pass
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+        process.wait(timeout=5)
+
+    assert process.returncode == 0
+    assert (repository_path / "manifest.json").exists()

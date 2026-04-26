@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import fcntl
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -55,6 +57,10 @@ class CompiledRepository:
     def manifest_path(self) -> Path:
         return self.root / "manifest.json"
 
+    @property
+    def lock_path(self) -> Path:
+        return self.root / ".compile.lock"
+
 
 def open_compiled_repository(path: str | Path) -> CompiledRepository:
     return CompiledRepository(root=Path(path).expanduser().resolve())
@@ -68,6 +74,17 @@ def compile_all_sessions(
 ) -> FullCompileResult:
     compiled_repository = _coerce_repository(repository)
     _ensure_repository_dirs(compiled_repository)
+
+    with _compile_repository_lock(compiled_repository):
+        return _compile_all_sessions_unlocked(reader, compiled_repository, session_filter=session_filter)
+
+
+def _compile_all_sessions_unlocked(
+    reader: HistoryReader,
+    compiled_repository: CompiledRepository,
+    *,
+    session_filter: SessionFilter | None,
+) -> FullCompileResult:
 
     manifest = load_repository_manifest(compiled_repository)
     summaries = reader.list_sessions(session_filter)
@@ -197,6 +214,17 @@ def _coerce_repository(repository: CompiledRepository | str | Path) -> CompiledR
 def _ensure_repository_dirs(repository: CompiledRepository) -> None:
     repository.root.mkdir(parents=True, exist_ok=True)
     repository.sessions_dir.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def _compile_repository_lock(repository: CompiledRepository):
+    repository.root.mkdir(parents=True, exist_ok=True)
+    with repository.lock_path.open("w", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _manifest_to_json(manifest: RepositoryManifest) -> dict[str, Any]:
