@@ -17,6 +17,7 @@ DEFAULT_PAGE_SIZE = 10
 DEFAULT_TEXT_MATCH_MAX_CHARS = 500
 DEFAULT_TEXT_SHOW_MAX_CHARS = 1200
 BLOCK_FILTER_ALIASES = {
+    "all": {"user_text", "assistant_text", "tool_call", "tool_result"},
     "user": {"user_text"},
     "assistant": {"assistant_text"},
     "ai": {"assistant_text"},
@@ -55,6 +56,8 @@ class SearchPage:
 @dataclass(frozen=True, slots=True)
 class ShowBlock:
     session_id: str
+    message_id: str
+    part_id: str | None
     block_id: str
     block_type: str
     title: str
@@ -189,6 +192,8 @@ def show_compiled_context(
     context_blocks = tuple(
         ShowBlock(
             session_id=anchor.session_id,
+            message_id=str(block["message_id"]),
+            part_id=str(block["part_id"]) if block.get("part_id") is not None else None,
             block_id=str(block["block_id"]),
             block_type=str(block["block_type"]),
             title=str(block["title"]),
@@ -205,6 +210,9 @@ def show_session_compiled_view(
     session_id: str,
     *,
     full_text: bool = False,
+    block_types: set[str] | None = None,
+    from_block: str | None = None,
+    to_block: str | None = None,
 ) -> ShowResult:
     compiled_repository = _coerce_repository(repository)
     manifest = load_repository_manifest(compiled_repository)
@@ -214,18 +222,56 @@ def show_session_compiled_view(
 
     artifact_path = compiled_repository.root / metadata.artifact_relpath
     session_payload = _load_session_payload(artifact_path)
+    payload_blocks = [
+        block
+        for block in session_payload["blocks"]
+        if block_types is None or str(block["block_type"]) in block_types
+    ]
+    payload_blocks = _slice_blocks_by_range(payload_blocks, from_block=from_block, to_block=to_block)
+
     blocks = tuple(
         ShowBlock(
             session_id=session_id,
+            message_id=str(block["message_id"]),
+            part_id=str(block["part_id"]) if block.get("part_id") is not None else None,
             block_id=str(block["block_id"]),
             block_type=str(block["block_type"]),
             title=str(block["title"]),
             display_text=_show_display_text(block=block, full_text=full_text),
         )
-        for block in session_payload["blocks"]
+        for block in payload_blocks
     )
     focus_block_id = str(blocks[0].block_id) if blocks else ""
     return ShowResult(anchor=SearchAnchor(session_id=session_id, block_id=focus_block_id), focus_block_id=focus_block_id, blocks=blocks)
+
+
+def _slice_blocks_by_range(
+    blocks: list[dict[str, Any]],
+    *,
+    from_block: str | None,
+    to_block: str | None,
+) -> list[dict[str, Any]]:
+    if from_block is None and to_block is None:
+        return blocks
+
+    start = _resolve_block_range_endpoint(blocks, from_block) if from_block is not None else 0
+    end = _resolve_block_range_endpoint(blocks, to_block) if to_block is not None else len(blocks) - 1
+    if start > end:
+        raise ValueError("show range start must not be after range end")
+    return blocks[start : end + 1]
+
+
+def _resolve_block_range_endpoint(blocks: list[dict[str, Any]], value: str) -> int:
+    if value.isdigit():
+        index = int(value)
+        if 0 <= index < len(blocks):
+            return index
+        raise KeyError(value)
+
+    for index, block in enumerate(blocks):
+        if str(block["block_id"]) == value:
+            return index
+    raise KeyError(value)
 
 
 def _build_match_text(*, block: dict[str, Any], pattern: re.Pattern[str]) -> str:

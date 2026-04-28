@@ -92,6 +92,14 @@ Read a whole compiled session:
 opencode-history-grep show --session <session-id> --all
 ```
 
+Read complete raw content for specific compiled blocks:
+
+```bash
+opencode-history-grep show --session <session-id> --block <block-id>,<block-id-or-index>
+```
+
+`--block` uses the compiled view only for block-to-message/part location, then reads the upstream SQLite record so long tool outputs are not limited by compile-time summaries.
+
 Only use `--full-text` when you really need long raw block content:
 
 ```bash
@@ -207,6 +215,14 @@ opencode-history-grep show --session <session-id> --anchor <block-id> --before 5
 ```bash
 opencode-history-grep show --session <session-id> --all
 ```
+
+读取指定 compiled block 的完整原始内容：
+
+```bash
+opencode-history-grep show --session <session-id> --block <block-id>,<block-id-or-index>
+```
+
+`--block` 只用 compiled view 做 block 到 message/part 的定位，然后回源 SQLite 读取原始记录，所以长工具输出不会受 compile 阶段摘要截断影响。
 
 只有确实需要长文本或长工具输出时，再用 `--full-text`：
 

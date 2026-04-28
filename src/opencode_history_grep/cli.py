@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Mapping
 
 from .reader import HistoryReader, SessionFilter
 from .repository import compile_all_sessions, open_compiled_repository
@@ -71,10 +73,14 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser = subparsers.add_parser("show", help="Show full context for a compiled anchor.")
     _ = show_parser.add_argument("--session", dest="session_id", required=True, help="Session ID.")
     _ = show_parser.add_argument("--anchor", help="Compiled anchor identifier.")
+    _ = show_parser.add_argument("--block", dest="block_ids", action="append", help="Show complete raw content for block id(s) or zero-based block index(es). Comma-separated values are allowed.")
     _ = show_parser.add_argument("--before", dest="before", type=int, default=1, help="Blocks to show before the focus anchor. Default: 1")
     _ = show_parser.add_argument("--after", dest="after", type=int, default=1, help="Blocks to show after the focus anchor. Default: 1")
     _ = show_parser.add_argument("--all", dest="show_all", action="store_true", help="Show the full compiled session view.")
     _ = show_parser.add_argument("--full-text", dest="full_text", action="store_true", help="Do not truncate long block display text.")
+    _ = show_parser.add_argument("--type", dest="block_types", action="append", help="Filter full-session view block types. Repeatable: message, all, user, assistant|ai, tool_call, tool|tool_result.")
+    _ = show_parser.add_argument("--from", dest="from_block", help="When used with --all, start at this block id or zero-based block index.")
+    _ = show_parser.add_argument("--to", dest="to_block", help="When used with --all, end at this block id or zero-based block index.")
     _ = show_parser.add_argument(
         "--repository",
         dest="repository_path",
@@ -115,10 +121,14 @@ def main(argv: list[str] | None = None) -> int:
         return _run_show(
             session_id=args.session_id,
             anchor_id=args.anchor,
+            block_ids=args.block_ids,
             before=max(0, int(args.before)),
             after=max(0, int(args.after)),
             show_all=bool(args.show_all),
             full_text=bool(args.full_text),
+            block_types=normalize_block_type_filters(args.block_types),
+            from_block=args.from_block,
+            to_block=args.to_block,
             repository_path=args.repository_path,
         )
 
@@ -188,19 +198,49 @@ def _run_show(
     *,
     session_id: str,
     anchor_id: str | None,
+    block_ids: list[str] | None,
     before: int,
     after: int,
     show_all: bool,
     full_text: bool,
+    block_types: set[str] | None,
+    from_block: str | None,
+    to_block: str | None,
     repository_path: str,
 ) -> int:
     reader = HistoryReader(DEFAULT_UPSTREAM_DATABASE)
     repository = open_compiled_repository(repository_path)
     compile_all_sessions(reader, repository, session_filter=None)
     repository = open_compiled_repository(repository_path)
+    if block_ids:
+        if show_all or anchor_id is not None or block_types is not None or from_block is not None or to_block is not None:
+            raise SystemExit("show --block cannot be combined with --all, --anchor, --type, --from, or --to.")
+        shown = show_session_compiled_view(
+            repository,
+            session_id,
+            full_text=True,
+            block_types=normalize_block_type_filters(["all"]),
+        )
+        selected_blocks = _resolve_selected_blocks(shown.blocks, _parse_block_ids(block_ids))
+        session = reader.load_session(session_id)
+        raw_messages = {message.id: message for message in session.messages}
+        for block in selected_blocks:
+            print(f"[{block.block_type}] {block.title} ({block.block_id})")
+            print(_raw_block_text(block=block, raw_messages=raw_messages))
+            print()
+        return 0
     if show_all:
-        shown = show_session_compiled_view(repository, session_id, full_text=full_text)
+        shown = show_session_compiled_view(
+            repository,
+            session_id,
+            full_text=full_text,
+            block_types=block_types or normalize_block_type_filters(["message"]),
+            from_block=from_block,
+            to_block=to_block,
+        )
     else:
+        if block_types is not None or from_block is not None or to_block is not None:
+            raise SystemExit("show --type/--from/--to require --all.")
         if not isinstance(anchor_id, str):
             raise SystemExit("show requires --anchor unless --all is set.")
         shown = show_compiled_context(
@@ -218,6 +258,73 @@ def _run_show(
         print(block.display_text)
         print()
     return 0
+
+
+def _parse_block_ids(values: list[str]) -> list[str]:
+    block_ids: list[str] = []
+    for value in values:
+        block_ids.extend(part.strip() for part in value.split(",") if part.strip())
+    if not block_ids:
+        raise SystemExit("show --block requires at least one block id or index.")
+    return block_ids
+
+
+def _resolve_selected_blocks(blocks: tuple[Any, ...], block_ids: list[str]) -> list[Any]:
+    selected: list[Any] = []
+    missing: list[str] = []
+    for block_id in block_ids:
+        block = _find_block(blocks, block_id)
+        if block is None:
+            missing.append(block_id)
+        else:
+            selected.append(block)
+    if missing:
+        raise SystemExit(f"Unknown block id(s): {', '.join(missing)}")
+    return selected
+
+
+def _find_block(blocks: tuple[Any, ...], block_id: str) -> Any | None:
+    if block_id.isdigit():
+        index = int(block_id)
+        if 0 <= index < len(blocks):
+            return blocks[index]
+        return None
+    return next((block for block in blocks if block.block_id == block_id), None)
+
+
+def _raw_block_text(*, block: Any, raw_messages: Mapping[str, Any]) -> str:
+    message = raw_messages.get(block.message_id)
+    if message is None:
+        raise SystemExit(f"Cannot find raw message for block {block.block_id}.")
+    if block.part_id is None:
+        text_chunks = [str(part.data.get("text", "")).strip() for part in message.parts if part.kind == "text"]
+        return "\n\n".join(chunk for chunk in text_chunks if chunk)
+
+    part = next((candidate for candidate in message.parts if candidate.id == block.part_id), None)
+    if part is None:
+        raise SystemExit(f"Cannot find raw part for block {block.block_id}.")
+    if part.kind != "tool":
+        return _format_json_value(part.data)
+
+    tool_name = str(part.data.get("tool", "unknown"))
+    state = part.data.get("state")
+    if not isinstance(state, Mapping):
+        return f"tool: {tool_name}\n\n{_format_json_value(part.data)}"
+
+    lines = [f"tool: {tool_name}", f"status: {state.get('status', 'unknown')}"]
+    if "input" in state:
+        lines.extend(["", "input:", _format_json_value(state["input"])])
+    if "output" in state:
+        lines.extend(["", "output:", _format_json_value(state["output"])])
+    if "error" in state:
+        lines.extend(["", "error:", _format_json_value(state["error"])])
+    return "\n".join(lines)
+
+
+def _format_json_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 def _build_session_filter(*, directory: str | None, since: str | None, until: str | None) -> SessionFilter | None:

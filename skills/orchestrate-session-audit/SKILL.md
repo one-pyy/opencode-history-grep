@@ -99,6 +99,7 @@ If such an anomaly exists, inspect the child reviewer session with this history-
   - then run `opencode-history-grep show --session <child-session-id> --all --type all --full-text` before making any judgment
   - if the child `session_id` is not known, first use `opencode-history-grep grep` to locate it, then inspect it with the same message → template/intent → full-text sequence
   - if you only need to inspect operations after a known block, use `show --session <child-session-id> --all --type all --from <block-id-or-index> --full-text`; use `--to <block-id-or-index>` when the review window has a known endpoint
+  - if a specific tool result or raw part may still be summarized, use `show --session <child-session-id> --block <block-id>,<block-id-or-index>` to read complete raw content from upstream SQLite through compiled block location
   - inspect whether it followed `audit-session`, especially whether it used the message-only pass for requirement/phase reconstruction, wrote the initial audit template before tool judgment, and used the full-text all-block pass for execution judgment
   - check whether it skipped deep dives, faked verification, guessed collapsed content, judged tools from message-only output, or drifted from the path-only output contract
 - Do not insert a truncated `show --session <child-session-id> --all --type all` overview between the message pass and full-text pass. Reason: reviewer-process judgment should follow the same current audit discipline: preserve message-level intent first, then judge from full-text evidence.

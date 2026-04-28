@@ -78,6 +78,14 @@ opencode-history-grep show --session <id> --all --type all --from <block-id-or-i
 
 `--from` / `--to` 接受 block id，例如 `msg_dbfb10314001i6KZwkoOJzLYTC:0198`，也接受零基 block 序号。任一侧不传表示开放边界。
 
+如果某个工具输出在 compile 阶段已经被摘要截断，审查员应按已知 block 精确读取完整原始内容：
+
+```bash
+opencode-history-grep show --session <id> --block <block-id>,<block-id-or-index>
+```
+
+`--block` 支持逗号分隔多个 block，也支持重复传参；它先用 compiled view 定位 `message_id` / `part_id`，再回源 SQLite 读取原始记录，因此适合核验长工具输出。
+
 ## 产物规则
 
 审查报告写入 run-scoped 路径：

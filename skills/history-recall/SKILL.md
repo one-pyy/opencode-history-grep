@@ -46,6 +46,7 @@ Use this skill only in these cases:
 - `--anchor`: anchor from a grep hit
 - `--before` / `--after`: how many blocks to show around an anchor
 - `--all`: show a whole compiled session
+- `--block`: show complete raw content for one or more compiled block ids or zero-based block indexes; comma-separated values are allowed. This uses compiled history for location, then reads upstream SQLite so long tool output is not limited by compile-time summaries.
 - `--full-text`: do not truncate long text or tool output
 
 ## How type filters work
@@ -200,6 +201,14 @@ Use when you already know the session id and want the whole compiled session, bu
 
 ```bash
 opencode-history-grep show --session <session-id> --all
+```
+
+### Scenario 10b: read complete raw content for selected blocks
+
+Use this when `show --all --type all --full-text` still shows a summarized tool result and you need the full raw tool output for a known block.
+
+```bash
+opencode-history-grep show --session <session-id> --block <block-id>,<block-id-or-index>
 ```
 
 ### Scenario 11: read a whole session with full text (use carefully)
