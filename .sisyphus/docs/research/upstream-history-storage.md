@@ -18,7 +18,7 @@ opencode upstream 的历史记录**不是** Claude Code 的 `~/.claude/projects`
 
 ### 1. 主数据库存在且默认落到 opencode 自己的数据目录
 
-文件：`/root/_/projects/opencode-upstream/packages/opencode/src/storage/db.ts`
+文件：`/root/_/refs/opencode-upstream/packages/opencode/src/storage/db.ts`
 
 确认点：
 
@@ -30,7 +30,7 @@ opencode upstream 的历史记录**不是** Claude Code 的 `~/.claude/projects`
 
 ### 2. 历史结构由 session/message/part 三张核心表定义
 
-文件：`/root/_/projects/opencode-upstream/packages/opencode/src/session/session.sql.ts`
+文件：`/root/_/refs/opencode-upstream/packages/opencode/src/session/session.sql.ts`
 
 确认点：
 
@@ -42,7 +42,7 @@ opencode upstream 的历史记录**不是** Claude Code 的 `~/.claude/projects`
 
 ### 3. 历史数据通过 projector 落表
 
-文件：`/root/_/projects/opencode-upstream/packages/opencode/src/session/projectors.ts`
+文件：`/root/_/refs/opencode-upstream/packages/opencode/src/session/projectors.ts`
 
 确认点：
 
@@ -56,8 +56,8 @@ opencode upstream 的历史记录**不是** Claude Code 的 `~/.claude/projects`
 
 文件：
 
-- `/root/_/projects/opencode-upstream/packages/opencode/src/session/message-v2.ts`
-- `/root/_/projects/opencode-upstream/packages/opencode/src/server/routes/instance/session.ts`
+- `/root/_/refs/opencode-upstream/packages/opencode/src/session/message-v2.ts`
+- `/root/_/refs/opencode-upstream/packages/opencode/src/server/routes/instance/session.ts`
 
 确认点：
 

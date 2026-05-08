@@ -1,9 +1,9 @@
-# Orchestrate Session Audit
-
 ---
 name: orchestrate-session-audit
 description: Orchestrate a full session-audit loop by discovering the target session_id, delegating audit-session to a reviewer, resuming interrupted reviewer work, reading the audit artifact, and deciding whether rectification can begin.
 ---
+
+# Orchestrate Session Audit
 
 ## Skill Definition
 

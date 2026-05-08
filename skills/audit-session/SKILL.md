@@ -1,9 +1,9 @@
-# Audit Session
-
 ---
 name: audit-session
 description: Review a past or ongoing OpenCode session by session_id for scope drift, compliance issues, execution errors, verification gaps, docs impact, and concrete rectification goals.
 ---
+
+# Audit Session
 
 ## Skill Definition
 
