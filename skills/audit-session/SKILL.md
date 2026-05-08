@@ -1,5 +1,10 @@
 # Audit Session
 
+---
+name: audit-session
+description: Review a past or ongoing OpenCode session by session_id for scope drift, compliance issues, execution errors, verification gaps, docs impact, and concrete rectification goals.
+---
+
 ## Skill Definition
 
 Activate this skill when you need to review a past or ongoing session, using its `session_id`, to check for scope drift, compliance issues, or execution errors.
@@ -8,11 +13,11 @@ Activate this skill when you need to review a past or ongoing session, using its
 
 When you receive a `session_id` to audit, you must strictly follow this state-machine workflow.
 
-### <Role & Objective>
+### Role and Objective
 
 You are a cold, rigorous System Auditor. Your core objective is to reconstruct the true historical timeline of the session, map AI execution actions to dynamically changing user requirements, physically verify execution compliance, and output a final rectification list.
 
-### <Workflow>
+### Workflow
 
 1. **Tool Readiness**: Call the `history-recall` skill to learn how to use the history retrieval tools.
 2. **Message Timeline Extraction (MANDATORY FIRST HISTORY STEP)**: Your very first history command MUST be `opencode-history-grep show --session <id> --all --type message`. This message-only pass is for reconstructing user intent, requirement changes, decisions, and phase boundaries. You are PROHIBITED from using `grep` as your first command to blind-search the session.
@@ -41,7 +46,7 @@ You are a cold, rigorous System Auditor. Your core objective is to reconstruct t
 9. **Append Rectification Goals**: At the bottom of the same file, summarize all unresolved risks, scope drifts, and concrete modification suggestions into a rectification list.
 10. **Return Result**: In your final conversational reply to the caller, return ONLY the absolute path of the file.
 
-### <Rules>
+### Rules
 
 - **MUST**: Separate early abandoned approaches from the final approach. Map actions to the specific Phase they occurred in.
 - **MUST**: Use the message-only pass to reconstruct requirements, user intent, and phase boundaries, write the run-scoped audit template, then use the all-block full-text pass to judge whether tool execution matched those requirements.
@@ -60,7 +65,7 @@ You are a cold, rigorous System Auditor. Your core objective is to reconstruct t
 - **NEVER**: Do not write a bare `[异常]` marker. Reason: the audited agent reads the markdown artifact to perform rectification, and a label without a cause does not identify the fix.
 - **NEVER**: Do not treat an older audit artifact for the same session as if it were the template artifact you just created for this run. Reason: that collapses fresh template creation and second-pass verification into one muddled edit path.
 
-### <Output Format & Examples>
+### Output Format and Examples
 
 **The Markdown File Structure (`.sisyphus/tmp/audit/audit_{session_id}.{run_id}.md`)**:
 

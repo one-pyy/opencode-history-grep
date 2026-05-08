@@ -1,5 +1,10 @@
 # Orchestrate Session Audit
 
+---
+name: orchestrate-session-audit
+description: Orchestrate a full session-audit loop by discovering the target session_id, delegating audit-session to a reviewer, resuming interrupted reviewer work, reading the audit artifact, and deciding whether rectification can begin.
+---
+
 ## Skill Definition
 
 Activate this skill when you need to orchestrate a full session-audit loop: discover the target `session_id`, delegate the audit to a child reviewer, continue the same child session if it gets interrupted, read the produced audit artifact, and decide whether rectification can begin.
