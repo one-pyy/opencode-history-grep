@@ -1,6 +1,6 @@
 ---
 name: history-recall
-description: Use this skill when a user refers to something done in the past, the current docs / knowledge database do not already answer it, or the user explicitly asks to search history.
+description: Use this skill when the user refers to prior local/OpenCode work with wording such as “我记得之前...”, “之前做过...”, or “recall ...”, and the current docs / knowledge_database do not already answer it; also use it when the user explicitly asks to search OpenCode history.
 ---
 
 # history-recall
@@ -9,10 +9,14 @@ Use `opencode-history-grep` to query `opencode` history.
 
 ## When to use
 
-Use this skill only in these cases:
+Use this skill only in these local-history cases:
 
-1. The user refers to something done in the past, but the current `docs/` and `knowledge_database/` do not contain enough information.
-2. The user explicitly asks to search history.
+1. The user refers to prior local/OpenCode work, but the current `docs/` and `knowledge_database/` do not contain enough information.
+2. The user explicitly asks to search OpenCode history.
+
+Generic search wording such as “检索”, “搜索”, or “查找资料” should route to web/external search unless the user clearly points to prior local work.
+
+Before searching history, first check the relevant `docs/` and `knowledge_database/` indexes and linked entries. Use `opencode-history-grep` only when those maintained documents do not answer the question or the user specifically needs original historical context.
 
 `system` is not part of the history search domain.
 
