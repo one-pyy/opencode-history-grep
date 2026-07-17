@@ -9,6 +9,8 @@
 - `skills/audit-session/SKILL.md`
 - `skills/orchestrate-session-audit/SKILL.md`
 
+这里的 session audit 是正式回顾性、写文件的审查流程。Oracle 也可以加载 `history-recall` 读取有边界的 session 证据，但它只对下一份未确认 candidate 做只读两阶段比较，不写 audit 文件，也不替代本流程。
+
 它们的 canonical 版本在本仓库内。外部 OpenCode skill 路径应是软连接：
 
 ```text
@@ -21,6 +23,12 @@
 `audit-session` 是 reviewer 侧规程：给定 `session_id` 后，它负责读取历史、拆阶段、写 run-scoped 审查文件、二次验证并输出审查文件路径。
 
 `orchestrate-session-audit` 是 caller 侧规程：它负责发现目标 `session_id`、委派 reviewer、在中断时续同一 reviewer 会话、读取审查文件，并判断审查产物是否可用于整改。
+
+Oracle candidate review 与本流程的边界：
+
+- Oracle Phase 1 只能读取 source boundary 之前的历史，并先返回独立影子参照；Phase 2 才读取 candidate 与 execution evidence。
+- Session audit 默认读取完整已发生执行历史，因此不能声称 candidate 隔离或 blind comparison。
+- 需要持久整改清单时使用本流程；需要在交付前检查下一份 plan/docs/实现时使用 Oracle 两阶段流程。
 
 ## 审查读取与落盘顺序
 

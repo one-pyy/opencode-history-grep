@@ -1,6 +1,6 @@
 ---
 name: history-recall
-description: Use this skill when the user refers to prior local/OpenCode work with wording such as “我记得之前...”, “之前做过...”, or “recall ...”, and the current docs / knowledge_database do not already answer it; also use it when the user explicitly asks to search OpenCode history.
+description: MUST USE when reviewing a current or historical OpenCode session by session_id, including Oracle independent review and session-audit workflows; also use it when the user explicitly asks to search OpenCode history or refers to prior local/OpenCode work that current docs / knowledge_database do not answer.
 ---
 
 # history-recall
@@ -13,6 +13,7 @@ Use this skill only in these local-history cases:
 
 1. The user refers to prior local/OpenCode work, but the current `docs/` and `knowledge_database/` do not contain enough information.
 2. The user explicitly asks to search OpenCode history.
+3. A reviewer receives a target `session_id`, session boundary, or audit task and needs session evidence.
 
 Generic search wording such as “检索”, “搜索”, or “查找资料” should route to web/external search unless the user clearly points to prior local work.
 
@@ -52,6 +53,26 @@ Before searching history, first check the relevant `docs/` and `knowledge_databa
 - `--all`: show a whole compiled session
 - `--block`: show complete raw content for one or more compiled block ids or zero-based block indexes; comma-separated values are allowed. This uses compiled history for location, then reads upstream SQLite so long tool output is not limited by compile-time summaries.
 - `--full-text`: do not truncate long text or tool output
+- `--from` / `--to`: when combined with `--all`, restrict the view to inclusive block ids or zero-based block indexes
+
+## Session review contract
+
+When this skill is loaded for Oracle review or session audit, `opencode-history-grep` is the evidence path. If the target session id is already known, start with `show`; do not rediscover it through broad listing or search.
+
+The caller may provide:
+
+- a source boundary: the accepted requirement, plan, docs, or boundary block that defines what the reviewer may use for an independent reference
+- an execution boundary: the last task-execution block that may be inspected during candidate comparison
+- a unique marker or exact excerpt that must first be resolved to a block id with `grep`
+
+For a two-phase independent review:
+
+1. Phase 1 reads only through the source boundary and returns an independent reference before candidate comparison.
+2. Phase 2 continues the same reviewer session, reads the bounded execution range and candidate artifacts supplied by the caller, then compares them.
+
+If the source boundary is a normal user or assistant message block, a message-only bounded view is appropriate. If the boundary is a tool-result marker, use an all-block bounded view so the endpoint remains present. Do not guess an endpoint that cannot be located.
+
+For retrospective review without a pre-recorded marker, use a distinctive existing message excerpt or caller-provided block id. If no clean pre-candidate boundary exists, state that the review is candidate-exposed instead of claiming blind independence.
 
 ## How type filters work
 
@@ -233,6 +254,8 @@ Use when you want to review another AI's execution process. You can pass the `se
 opencode-history-grep show --session <session-id> --all --full-text
 ```
 
+For a formal audit, follow the separately loaded `audit-session` workflow. For an Oracle candidate review, use the source and execution boundaries supplied by the caller rather than opening the whole session before Phase 1 concludes.
+
 ## How to narrow wide results
 
 Prefer these moves first:
@@ -262,3 +285,4 @@ For `tool_result`, `match` is a local window, not the full raw output.
 - Do not treat `show` as a search command. Reason: it needs either a known `session` / `anchor` or a whole-session view.
 - Do not interpret directory filtering as file-content filtering. Reason: it filters session working directories.
 - Do not interpret time filtering as single-message trimming. Reason: it filters session scope.
+- Do not substitute a formatted session summary for the `opencode-history-grep` evidence path when this skill was loaded for review. Reason: bounded block views and raw block recovery are part of the review contract.

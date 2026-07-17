@@ -1,10 +1,10 @@
 # opencode-history-grep — history recall skill 设计
 
-状态：**已设计，待实现对齐**
+状态：**已实现**
 
 ## 目标
 
-这份文档描述一个给模型使用的 skill：让模型学会如何调用 `opencode-history-grep` 的 CLI 来查询历史记录，而不是直接重扫原始 SQLite，也不是退回普通文本 grep。
+这份文档描述一个给模型使用的 skill：让模型学会如何调用 `opencode-history-grep` 的 CLI 查询历史记录和读取有边界的 session 证据，而不是直接重扫原始 SQLite、退回普通文本 grep 或用格式化 session 摘要替代 block 证据。
 
 固定默认路径：
 
@@ -30,13 +30,14 @@
 
 ## 这个 skill 要教会模型什么
 
-模型应学会四件事：
+模型应学会六件事：
 
 1. 何时直接 `grep`
 2. 何时才需要单独 `compile`
 3. 何时用目录筛选缩小 session 范围
 4. 何时用时间筛选缩小 session 范围
 5. 何时用 `show` 回跳完整上下文
+6. 已知 `session_id` 时如何用 `--from` / `--to` 固定审查边界，并用 `--block` 回源读取完整原始内容
 
 ## 推荐工作流
 
@@ -57,6 +58,11 @@
 4. **最后 `show`**
    - `show` 也应先自动 compile / refresh，避免回看已知 session 时读到旧 compiled view
    - 只对值得继续看的命中结果回跳完整上下文
+5. **审查已知 session 时直接读取边界**
+   - 已知 `session_id` 时不重新搜索 session
+   - Oracle 两阶段审查第一阶段只读到 source boundary；第二阶段才读取 execution boundary 和 candidate evidence
+   - endpoint 是 tool result marker 时使用 `--type all`，避免先按 message 类型过滤后丢失边界
+   - 无法定位干净的候选前边界时，明确标记为 candidate-exposed retrospective review
 
 ## skill 应明确告诉模型的边界
 
@@ -110,6 +116,8 @@ skill 正文应清楚写出：
 - 分页参数
 - 类型多选筛选参数
 - `show --all / --before / --after / --full-text`
+- `show --from / --to / --block` 的 inclusive block 边界与 raw recovery 语义
+- 按 `session_id` 做 Oracle review 或 session audit 时必须使用该 skill
 - 何时必须先 compile
 - 何时应该先收窄范围而不是直接 grep
 - 当前 grep 是文本匹配，因此 query 需要主动尝试近义词、不同措辞与中英文变体
@@ -123,3 +131,4 @@ skill 正文应清楚写出：
 2. 用户说“帮我找上周关于 Y 的历史”时，知道优先加时间筛选
 3. 模型不会退回普通 grep 或直接扫 SQLite 文本
 4. 模型知道先 grep，再对重点结果 show，而不是盲目展开整段历史
+5. reviewer 已知 session 和边界时直接使用 bounded `show`，不会在独立审查第一阶段提前读取 candidate
