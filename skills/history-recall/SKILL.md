@@ -53,7 +53,7 @@ Before searching history, first check the relevant `docs/` and `knowledge_databa
 - `--all`: show a whole compiled session
 - `--block`: show complete raw content for one or more compiled block ids or zero-based block indexes; comma-separated values are allowed. This uses compiled history for location, then reads upstream SQLite so long tool output is not limited by compile-time summaries.
 - `--full-text`: do not truncate long text or tool output
-- `--from` / `--to`: when combined with `--all`, restrict the view to inclusive block ids or zero-based block indexes
+- `--from` / `--to`: when combined with `--all`, restrict the view to inclusive block ids, zero-based block indexes, or quoted `text:<literal>` endpoints that uniquely match one block after `--type` filtering
 
 ## Session review contract
 
@@ -63,14 +63,45 @@ The caller may provide:
 
 - a source boundary: the accepted requirement, plan, docs, or boundary block that defines what the reviewer may use for an independent reference
 - an execution boundary: the last task-execution block that may be inspected during candidate comparison
-- a unique marker or exact excerpt that must first be resolved to a block id with `grep`
+- a unique marker or exact excerpt that can be passed directly as a quoted `text:<literal>` endpoint
 
-For a two-phase independent review:
+`current_session_id` returns a caller-local `session_id`, bare `message_id`, and unique `boundary_marker`. Use the provided values directly:
+
+```bash
+session_id='<provided session_id>'
+boundary_marker='<provided boundary_marker>'
+opencode-history-grep show --session "$session_id" --all --type 'all' --to "text:$boundary_marker" --full-text
+```
+
+`text:` matching is case-sensitive, literal, and runs after `--type` filtering. It succeeds only when exactly one filtered block contains the literal; zero or multiple matches fail explicitly. The marker lives in a tool-result block, so use it only with `--type 'all'` or another filter that retains tool results. For a user-only source window, use quoted `text:` excerpts from the target user blocks. If an excerpt is not unique, use `grep` to inspect candidates and pass the selected full block id instead.
+
+For Oracle Session Phase 1, each source-start/source-boundary excerpt must contain at least 20 characters, or the entire source input when it is shorter. Use the bounded union of `--type user --type assistant`: user includes ordinary user text and completed `question` decisions, while assistant text supplies approval context but becomes authoritative only through explicit user acceptance. Accepted source artifacts are provided separately by exact path, accepted ref or block, and acceptance evidence. Do not broadly admit tool history; use a targeted write block only when an accepted artifact cannot be recovered from its exact accepted version.
+
+For a two-phase `candidate` review:
 
 1. Phase 1 reads only through the source boundary and returns an independent reference before candidate comparison.
 2. Phase 2 continues the same reviewer session, reads the bounded execution range and candidate artifacts supplied by the caller, then compares them.
 
 If the source boundary is a normal user or assistant message block, a message-only bounded view is appropriate. If the boundary is a tool-result marker, use an all-block bounded view so the endpoint remains present. Do not guess an endpoint that cannot be located.
+
+For Oracle `session` mode, reconstruct the effective contract before reading execution evidence:
+
+1. Read the target task's bounded user+assistant window:
+   ```bash
+   session_id='<provided session_id>'
+   opencode-history-grep show --session "$session_id" --all --type 'user' --type 'assistant' --from 'text:<exact unique first user requirement>' --to 'text:<exact unique final authorization>' --full-text
+   ```
+2. Use the bounded assistant messages to identify what the user approved, amended, or rejected; do not treat unaccepted assistant content as authority. Answered `question` decisions are already present in the user view.
+3. Read accepted source artifacts from their exact path and accepted ref/block, verify the supplied acceptance evidence, and build the effective contract from still-active requirements, later amendments, accepted artifacts, non-goals, and superseded requirements.
+4. In the same Oracle session, read Phase 2 execution evidence:
+   ```bash
+   session_id='<provided session_id>'
+   boundary_marker='<provided boundary_marker>'
+   opencode-history-grep show --session "$session_id" --all --type 'all' --from 'text:<exact unique execution start>' --to "text:$boundary_marker" --full-text
+   ```
+5. Use `--block` only for exact raw recovery after the bounded full-text pass.
+
+`--type user` returns ordinary user text plus completed `question` decisions. `--type assistant` returns the visible text from each assistant message, combining that message's text parts in creation order into one block; reasoning, system parts, tool calls, and tool results remain excluded. The combined block does not preserve interleaving between text and tools. In Session Phase 1, unaccepted assistant self-reports and conclusions remain context, not source authority.
 
 For retrospective review without a pre-recorded marker, use a distinctive existing message excerpt or caller-provided block id. If no clean pre-candidate boundary exists, state that the review is candidate-exposed instead of claiming blind independence.
 
@@ -84,6 +115,8 @@ For retrospective review without a pre-recorded marker, use a distinctive existi
 - `tool_result`
 - `tool` = `tool_call + tool_result`
 - `message` = `user + assistant`
+
+`user` includes completed `question` decisions. `message` includes those decisions through `user`; `tool_result` and `tool` also retain them for tool-oriented review.
 
 Task-oriented interpretation:
 
@@ -217,7 +250,8 @@ opencode-history-grep grep --regex --query "history|grep" --page 2
 Use when you already have a hit with `session` and `anchor`.
 
 ```bash
-opencode-history-grep show --session <session-id> --anchor <block-id> --before 5 --after 5
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --anchor '<block-id>' --before 5 --after 5
 ```
 
 ### Scenario 10: read a whole session (recommended first)
@@ -225,7 +259,8 @@ opencode-history-grep show --session <session-id> --anchor <block-id> --before 5
 Use when you already know the session id and want the whole compiled session, but do **not** want to immediately expand every long text or tool output.
 
 ```bash
-opencode-history-grep show --session <session-id> --all
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all
 ```
 
 ### Scenario 10b: read complete raw content for selected blocks
@@ -233,7 +268,8 @@ opencode-history-grep show --session <session-id> --all
 Use this when `show --all --type all --full-text` still shows a summarized tool result and you need the full raw tool output for a known block.
 
 ```bash
-opencode-history-grep show --session <session-id> --block <block-id>,<block-id-or-index>
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --block '<block-id>,<block-id-or-index>'
 ```
 
 ### Scenario 11: read a whole session with full text (use carefully)
@@ -241,7 +277,8 @@ opencode-history-grep show --session <session-id> --block <block-id>,<block-id-o
 Use this only when the default truncated view is not enough and you explicitly need long raw block content.
 
 ```bash
-opencode-history-grep show --session <session-id> --all --full-text
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --full-text
 ```
 
 Warning: `--full-text` can expand very long text and tool output, making results much longer and harder to skim. Prefer not to use it unless necessary.
@@ -251,10 +288,11 @@ Warning: `--full-text` can expand very long text and tool output, making results
 Use when you want to review another AI's execution process. You can pass the `session-id` and have another AI review its steps, logic, and tool usage to see if it made any errors.
 
 ```bash
-opencode-history-grep show --session <session-id> --all --full-text
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --full-text
 ```
 
-For a formal audit, follow the separately loaded `audit-session` workflow. For an Oracle candidate review, use the source and execution boundaries supplied by the caller rather than opening the whole session before Phase 1 concludes.
+For an Oracle session review, follow the separately loaded `audit-session` mode protocol and its role-filtered source boundary. For an Oracle candidate review, use the source and execution boundaries supplied by the caller rather than opening the whole session before Phase 1 concludes.
 
 ## How to narrow wide results
 

@@ -5,7 +5,7 @@ Purpose: 记录基于 opencode upstream 历史记录的编译式检索 CLI 工�
 
 ## Summary
 
-当前文档覆盖的是一个面向 opencode upstream SQLite 历史的编译式检索系统：核心形态是“库优先 + CLI 外壳”，当前已经实现全局默认 DB / repository、自动 refresh 的 `grep` / `show`、分页、多选类型筛选、regex / 跨行查询、`show` 回跳与整会话查看、`show --type message/all` 阅读视图切换、`show --from/--to` 范围续读、`show --block` 原始内容读取，以及给模型调用的 History Recall、Oracle 有边界两阶段审查和正式 session audit skill 工作流。涉及结果编译、搜索输出、目录筛选、时间筛选、query 逻辑、全局安装刷新或 skill 调用方式时，应优先阅读本目录。
+当前文档覆盖的是一个面向 opencode upstream SQLite 历史的编译式检索系统：核心形态是“库优先 + CLI 外壳”，当前已经实现全局默认 DB / repository、自动 refresh 的 `grep` / `show`、分页、多选类型筛选、regex / 跨行查询、`show` 回跳与整会话查看、按 user/assistant/message/all 的角色与内容类型过滤、`show --from/--to` 的 block/index/quoted `text:<literal>` 唯一匹配范围、`show --block` 原始内容读取，以及给模型调用的 History Recall、Oracle candidate/session 两种有边界两阶段审查模式。涉及结果编译、搜索输出、目录筛选、时间筛选、query 逻辑、全局安装刷新或 skill 调用方式时，应优先阅读本目录。
 
 ---
 
@@ -34,7 +34,7 @@ Purpose: 记录基于 opencode upstream 历史记录的编译式检索 CLI 工�
 ## Skills
 
 [skills/history-recall-skill.md] — 已实现：教模型如何搜索、回看并按 block 边界读取 Oracle/session audit 证据的 skill 约定
-[skills/session-audit-skills.md] — 已实现：正式回顾性 audit 的 canonical skill、落盘流程，以及与 Oracle 只读候选审查的边界
+[skills/session-audit-skills.md] — 已实现：Oracle Session 模式的 canonical reviewer/caller skills、角色过滤、报告与 Owner 裁决
 
 ## Testing
 

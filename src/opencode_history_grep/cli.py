@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     _ = grep_parser.add_argument("--query", dest="queries", action="append", required=True, help="Search query. Repeatable.")
     _ = grep_parser.add_argument("--regex", action="store_true", help="Interpret --query as a regular expression, with cross-line matching enabled.")
     _ = grep_parser.add_argument("--logic", choices=["and", "or"], default="or", help="How multiple --query values combine. Default: or")
-    _ = grep_parser.add_argument("--type", dest="block_types", action="append", help="Filter block types. Repeatable: user, assistant|ai, tool_call, tool|tool_result.")
+    _ = grep_parser.add_argument("--type", dest="block_types", action="append", help="Filter block types. Repeatable: user (includes completed question decisions), assistant|ai, tool_call, tool|tool_result.")
     _ = grep_parser.add_argument("--page", dest="page", type=int, default=1, help="Result page number. Default: 1")
     _ = grep_parser.add_argument("--page-size", dest="page_size", type=int, default=10, help="Results per page. Default: 10")
     _ = grep_parser.add_argument(
@@ -78,9 +78,9 @@ def build_parser() -> argparse.ArgumentParser:
     _ = show_parser.add_argument("--after", dest="after", type=int, default=1, help="Blocks to show after the focus anchor. Default: 1")
     _ = show_parser.add_argument("--all", dest="show_all", action="store_true", help="Show the full compiled session view.")
     _ = show_parser.add_argument("--full-text", dest="full_text", action="store_true", help="Do not truncate long block display text.")
-    _ = show_parser.add_argument("--type", dest="block_types", action="append", help="Filter full-session view block types. Repeatable: message, all, user, assistant|ai, tool_call, tool|tool_result.")
-    _ = show_parser.add_argument("--from", dest="from_block", help="When used with --all, start at this block id or zero-based block index.")
-    _ = show_parser.add_argument("--to", dest="to_block", help="When used with --all, end at this block id or zero-based block index.")
+    _ = show_parser.add_argument("--type", dest="block_types", action="append", help="Filter full-session view block types. Repeatable: message, all, user (includes completed question decisions), assistant|ai, tool_call, tool|tool_result.")
+    _ = show_parser.add_argument("--from", dest="from_block", help="When used with --all, start at this block id, zero-based block index, or quoted text:<literal> that uniquely matches one filtered block.")
+    _ = show_parser.add_argument("--to", dest="to_block", help="When used with --all, end at this block id, zero-based block index, or quoted text:<literal> that uniquely matches one filtered block.")
     _ = show_parser.add_argument(
         "--repository",
         dest="repository_path",
@@ -230,14 +230,17 @@ def _run_show(
             print()
         return 0
     if show_all:
-        shown = show_session_compiled_view(
-            repository,
-            session_id,
-            full_text=full_text,
-            block_types=block_types or normalize_block_type_filters(["message"]),
-            from_block=from_block,
-            to_block=to_block,
-        )
+        try:
+            shown = show_session_compiled_view(
+                repository,
+                session_id,
+                full_text=full_text,
+                block_types=block_types or normalize_block_type_filters(["message"]),
+                from_block=from_block,
+                to_block=to_block,
+            )
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
     else:
         if block_types is not None or from_block is not None or to_block is not None:
             raise SystemExit("show --type/--from/--to require --all.")

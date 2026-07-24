@@ -8,6 +8,7 @@ from .models import HistoryMessage, HistoryPart, HistorySession
 
 BlockType = Literal[
     "user_text",
+    "user_decision",
     "assistant_text",
     "tool_call",
     "tool_result",
@@ -126,8 +127,22 @@ def _build_tool_blocks(*, session_id: str, message: HistoryMessage, part: Histor
     rendered_input = _render_mapping(tool_input) if isinstance(tool_input, Mapping) else ""
     output_summary = _summarize_tool_result(state)
 
-    if status in {"completed", "error"}:
-        block_type: BlockType = "tool_result"
+    role: BlockRole = "tool"
+    if status == "completed" and tool_name == "question":
+        question_output = _render_tool_output(state)
+        block_type: BlockType = "user_decision"
+        role = "user"
+        title = "User decision · question"
+        summary = _first_line(question_output) or "question answered"
+        search_text = "\n".join(part for part in [tool_name, rendered_input, question_output] if part)
+        display_lines = ["tool: question", "status: completed"]
+        if rendered_input:
+            display_lines.extend(["", "input:", rendered_input])
+        if question_output:
+            display_lines.extend(["", "answer:", question_output])
+        display_text = "\n".join(display_lines)
+    elif status in {"completed", "error"}:
+        block_type = "tool_result"
         title = f"Tool result · {tool_name}"
         summary = _first_line(output_summary) or f"{tool_name} {status}"
         search_text = "\n".join(part for part in [tool_name, rendered_input, output_summary] if part)
@@ -150,7 +165,7 @@ def _build_tool_blocks(*, session_id: str, message: HistoryMessage, part: Histor
         message_id=message.id,
         part_id=part.id,
         ordinal=ordinal,
-        role="tool",
+        role=role,
         block_type=block_type,
         title=title,
         summary=summary,
@@ -253,7 +268,8 @@ def _make_block(
 
 def _collect_message_text(message: HistoryMessage) -> str:
     chunks: list[str] = []
-    for part in message.parts:
+    ordered_parts = sorted(message.parts, key=lambda part: (part.time_created, part.id))
+    for part in ordered_parts:
         if part.kind != "text":
             continue
         if bool(part.data.get("ignored", False)):
@@ -268,14 +284,18 @@ def _summarize_tool_result(state: Mapping[str, Any]) -> str:
     if "error" in state and isinstance(state.get("error"), str):
         return _sanitize_text(str(state["error"]))
 
+    return _limit_text(_render_tool_output(state))
+
+
+def _render_tool_output(state: Mapping[str, Any]) -> str:
     output = state.get("output")
     if isinstance(output, str):
-        return _limit_text(_sanitize_text(output))
+        return _sanitize_text(output)
     if isinstance(output, Mapping):
-        return _limit_text(_render_mapping(output))
+        return _render_mapping(output)
     if isinstance(output, list):
         pieces = [_sanitize_text(str(item)) for item in output if str(item).strip()]
-        return _limit_text("\n".join(pieces))
+        return "\n".join(pieces)
     return ""
 
 

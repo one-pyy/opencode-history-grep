@@ -1,162 +1,76 @@
 ---
 name: orchestrate-session-audit
-description: Orchestrate a full session-audit loop by discovering the target session_id, delegating audit-session to a reviewer, resuming interrupted reviewer work, reading the audit artifact, and deciding whether rectification can begin.
+description: Orchestrate Oracle session mode by fixing source and execution boundaries, running both phases in one Oracle session, persisting the report, and adjudicating findings.
 ---
 
 # Orchestrate Session Audit
 
-## Skill Definition
+This is the caller-side entry for an explicitly requested retrospective session review. It does not create a separate audit reviewer system; it invokes Oracle in `session` mode and uses the shared Oracle report and owner adjudication gate.
 
-Activate this skill when you need to orchestrate a full session-audit loop: discover the target `session_id`, delegate the audit to a child reviewer, continue the same child session if it gets interrupted, read the produced audit artifact, and decide whether rectification can begin.
+## Establish the review object
 
-## Core Purpose
+Determine:
 
-This is the **caller-side companion skill** for `audit-session`.
+- target `session_id`
+- source start and source boundary: excerpts of at least 20 characters, or each entire message when shorter, plus their resolved endpoints
+- accepted source artifacts: exact path, accepted ref or block, and acceptance evidence
+- execution start and execution boundary
+- review focus and task title
 
-- `audit-session` defines how the delegated reviewer performs the audit.
-- `orchestrate-session-audit` defines how the caller finds the session, launches the reviewer, resumes an interrupted reviewer, reads the audit artifact, and decides whether the artifact is usable.
-- Audit artifacts live under `.sisyphus/tmp/audit/` and must be run-scoped, not session-scoped singleton files.
-- The review flow uses `show --type message` first to reconstruct requirements and write the audit template, then `show --type all --full-text` to verify whether tool execution matched those requirements.
+If the current session id is needed, use `current_session_id`. Its bare `message_id` identifies the caller message but is not a `show --from/--to` endpoint. Use the returned values directly:
 
----
+```bash
+session_id='<provided session_id>'
+boundary_marker='<provided boundary_marker>'
+opencode-history-grep show --session "$session_id" --all --type 'all' --to "text:$boundary_marker" --full-text
+```
 
-## Workflow
+Pass `text:<boundary_marker>` as the all-block execution boundary. For the role-filtered Phase 1 source window, pass quoted `text:` excerpts of at least 20 characters from the first requirement and final authorization; if either whole message is shorter, pass the whole message. Text endpoints resolve after type filtering and must match exactly one block. If an excerpt is not unique, use `grep --type 'user'` to select the full user block id, but still include the original excerpt in the Oracle call. This excludes unrelated tasks earlier in the same session.
 
-### 1. Discover the target session id
+Phase 1 uses the bounded union of `--type 'user' --type 'assistant'`. User blocks include ordinary user text and completed `question` decisions; assistant text supplies approval context but becomes contract only through explicit user acceptance. Do not add general tool-result blocks. For each accepted source artifact, pass the exact path, accepted ref or block, and acceptance evidence; use a targeted write block only when the accepted artifact cannot be recovered from its exact accepted version.
 
-If the target `session_id` is not already known, discover it by grepping a distinctive long quote from that session.
+If a historical session id is unknown, the same exact-user-quote grep locates it. Do not use broad session listings when an exact quote is available.
 
-- Recommended command:
-  ```bash
-  opencode-history-grep grep --query "<a distinctive exact user quote from the target session>" --type user --page-size 5
-  ```
-- If you are auditing your own current session, first choose a unique sentence from the user's request that triggered the audit, then run the recommended `grep --type user` command. Do not start with session-listing tools.
-- If you do not know the `session_id` yet, run that exact-quote history grep first, then pass the discovered id into the audit workflow.
-- If you already know the `session_id`, for example from a child agent task result, pass it directly and do not run a discovery grep first.
-- This applies to auditing your own current session and to auditing another agent's session.
-- Choose a quote long enough to avoid accidental matches. Prefer user wording over assistant wording because user text is the requirement anchor.
-- Do not use `session_list`, `session_info`, or project/date listing to find the current session. Reason: project paths and date filters can miss the active session, while an exact user quote searches the same compiled history source used by the audit workflow.
+The effective contract is cumulative, not merely the last sentence: retain requirements still in force, apply later amendments, include explicitly accepted assistant artifacts, and mark earlier requirements superseded by later user direction.
 
-### 2. Delegate the session audit
+## Phase 1 — Oracle reference
 
-Once the `session_id` is known, delegate the actual audit to a review-capable child agent.
+Invoke Oracle with `audit-session` and `history-recall` loaded. Provide only the session id, source excerpts and resolved endpoints, accepted source-artifact records, review focus, and report prefix. Do not provide execution-time docs, final execution evidence, candidate files, or owner findings.
 
-- Preferred child: `sisyphus-junior` with category `unspecified-high`. Reason: session auditing requires strict adherence to physical execution steps: fetching message-only history, fetching full tool history, building templates, then checking boxes. `sisyphus-junior` is better suited to disciplined execution than critique-only agents.
-- Required skills for the child: `audit-session`, `history-recall`.
-- Required prompt content: tell the child to execute the `audit-session` workflow for the target `session_id`; do not restate a conflicting audit procedure in the caller prompt.
-- Preferred call shape:
-  ```typescript
-  task(
-    category="unspecified-high",
-    load_skills=["audit-session", "history-recall"],
-    description="Audit session",
-    prompt="Execute the audit-session workflow for session_id: [XXX]. Follow audit-session as the reviewer-side source of truth.",
-    run_in_background=false
-  )
-  ```
-- If `sisyphus-junior` cannot satisfy the needed tool contract in the current runtime, choose another disciplined executor that can read history and write/edit files.
+Require the `<oracle_reference mode="session">` output defined by `audit-session`. Continue the same Oracle session as soon as the reference returns.
 
-### 3. If the child audit is interrupted, continue the same child session
+## Phase 2 — bounded execution review
 
-If the delegated audit session aborts or stops mid-run, you MUST use the `continue-child-agent` workflow.
+Continue the same Oracle session and provide the execution start, execution boundary, and exact repository evidence needed to verify final state. Classify unapproved candidate docs and execution-time docs as Phase 2 evidence, normally through exact paths and diffs. Require report-ready Markdown following the shared Oracle report template.
 
-- Reuse the old child `session_id` directly.
-- Do **not** spawn a fresh child if direct continuation is still possible.
-- Preferred continuation shape:
-  ```typescript
-  task(
-    session_id="<old child session id>",
-    load_skills=["audit-session", "history-recall"],
-    prompt="Continue the existing session-audit run and finish the workflow. Preserve the existing run-scoped audit artifact as the working artifact."
-  )
-  ```
+If the Oracle session is interrupted, use `continue-child-agent`. Recover the original Phase 1 reference before exposing Phase 2 evidence; do not reconstruct a replacement reference after reading the execution.
 
-Reason: continuing the same child preserves full local context and avoids forcing a new child to reconstruct partially completed audit work.
+## Persist and adjudicate the report
 
-### 4. Read the produced audit file
+The owner creates or updates one report at:
 
-The delegated child must return only the audit markdown file path. Read that file first.
+```text
+.sisyphus/tmp/oracle-reviews/YYYY-MM-DD_<task-title>.md
+```
 
-- Expect a run-scoped artifact such as `.sisyphus/tmp/audit/audit_{session_id}.{run_id}.md`.
-- Do not assume there is only one audit file per session.
-- The audited agent must read this markdown artifact before attempting rectification. The path alone is not enough; rectification starts only after the audited agent has read the file contents and understood the abnormal annotations.
-- If the audit file contains abnormal markers, each marker must include a concrete reason. If any marker is a bare `[异常]` without a cause, treat the reviewer output as incomplete and send the same child reviewer back to fix the artifact.
+Append `-02` only for another review run with the same title. Persist Oracle's problem list, evidence, trigger chains, classifications, and owner feedback placeholders. Then fill each finding's fact status, contract relationship, task relationship, impact, proposal quality, disposition, evidence, and next action.
 
-### 5. Inspect the child reviewer session only on artifact/process anomalies
+The owner sets the final verdict: `通过`, `有阻塞问题`, `等待用户裁决`, or `证据不足`. Oracle output is review evidence, not repair authorization. Only a factually confirmed, contract-backed, in-scope finding with disposition `采纳修复` may enter repair.
 
-After reading the audit result, do not routinely inspect the child reviewer session. The normal path is: accept a well-formed audit artifact as the handoff contract and move to rectification.
+If Phase 1 XML or Phase 2 report content is malformed, incomplete, lacks evidence, or omits the requested focus, continue the same Oracle session to repair that exact output. Iterate only on a concrete missing requirement, evidence gap, routing defect, or verification hole.
 
-Inspect the child reviewer session only when there is a concrete anomaly, for example:
+Before compressing reviewer-process history, preserve the report path, review mode and boundaries, current verdict or anomaly, and any rectification/user-decision goals in the conversation or another durable handoff. Do not compress away the only bridge that identifies the report and its role.
 
-- the child did not return a run-scoped audit file path
-- the returned file is missing or cannot be read
-- the audit file contains bare `[异常]` markers without reasons
-- the audit file has checked boxes in the initial template without evidence of second-pass verification
-- the audit findings contradict the caller's known facts or omit an explicit audit focus
-- the child was interrupted and continuation behavior needs verification
+## Acceptance
 
-If such an anomaly exists, inspect the child reviewer session with this history-based discipline:
+- Phase 1 used the bounded user+assistant conversation and did not inspect general execution evidence.
+- The source window started at the target task's first user requirement and excluded earlier unrelated tasks.
+- Source excerpts met the 20-character-or-entire-message rule, and the call retained the excerpts even when endpoints used block ids.
+- Phase 1 automatically included answered `question` decisions and bounded assistant context; only explicitly accepted assistant content and source artifacts became authoritative.
+- Accepted source artifacts carried exact path, accepted ref or block, and acceptance evidence; ambiguous acceptance remained unresolved.
+- Phase 2 used the same Oracle session and bounded full execution evidence.
+- Superseded requirements were not treated as final acceptance criteria.
+- Historical actions were retained only when unreverted side effects, authority breaches, or verification gaps still mattered.
+- The owner, not Oracle, wrote the report file, filled feedback, and decided the verdict.
 
-- Use the same history-based review discipline:
-  - first load `history-recall` if it is not already loaded
-  - if the child `session_id` is already known, start with `opencode-history-grep show --session <child-session-id> --all --type message`
-  - then analyze the child reviewer's stated intent, phase boundaries, and whether it wrote the run-scoped audit template before judging tools
-  - then run `opencode-history-grep show --session <child-session-id> --all --type all --full-text` before making any judgment
-  - if the child `session_id` is not known, first use `opencode-history-grep grep` to locate it, then inspect it with the same message → template/intent → full-text sequence
-  - if you only need to inspect operations after a known block, use `show --session <child-session-id> --all --type all --from <block-id-or-index> --full-text`; use `--to <block-id-or-index>` when the review window has a known endpoint
-  - if a specific tool result or raw part may still be summarized, use `show --session <child-session-id> --block <block-id>,<block-id-or-index>` to read complete raw content from upstream SQLite through compiled block location
-  - inspect whether it followed `audit-session`, especially whether it used the message-only pass for requirement/phase reconstruction, wrote the initial audit template before tool judgment, and used the full-text all-block pass for execution judgment
-  - check whether it skipped deep dives, faked verification, guessed collapsed content, judged tools from message-only output, or drifted from the path-only output contract
-- Do not insert a truncated `show --session <child-session-id> --all --type all` overview between the message pass and full-text pass. Reason: reviewer-process judgment should follow the same current audit discipline: preserve message-level intent first, then judge from full-text evidence.
-- If the child session was interrupted and later continued, audit the continued session chain as one logical reviewer run.
-- Treat the child's execution history as anomaly evidence, not as a mandatory second audit layer. Reason: routine self-auditing of every reviewer run creates recursive overhead and distracts from rectifying the audited session.
-
-### 5.1 Compression boundary after audit-artifact acceptance
-
-After the audit artifact has been read and accepted as usable, compression is allowed only if all durable handoff facts already exist outside the soon-to-be-compressed history:
-
-- the produced audit file path has been read and stated or written into the current working context
-- the rectification goals are available from the audit file or a durable note
-- the artifact quality verdict has been stated clearly, or the anomaly that forced child-session inspection has been stated clearly
-- the bridge record that points to the audit file and explains its role will remain visible
-
-Do not compress before reading the produced audit markdown. Do not compress away the bridge record. Reason: the audited agent must be able to resume from the audit artifact and rectification goals without rediscovering audit handoff context.
-
-### 6. Iterate only on real holes
-
-If the child review process exposed real workflow flaws, fix the relevant skill or caller protocol and run the loop again.
-
-Do **not** iterate just to restate the same conclusion. Iterate only when there is a concrete missed requirement, routing defect, tool-usage gap, or verification hole.
-
----
-
-## Rules
-
-- **MUST**: Treat `audit-session` as the reviewer-side source of truth.
-- **MUST**: Treat `continue-child-agent` as the source of truth for interrupted-child recovery.
-- **MUST**: Read the produced audit file before judging the child session quality.
-- **MUST**: Require the audited agent to read the produced markdown file before doing rectification work.
-- **MUST**: Treat bare `[异常]` markers as incomplete reviewer output; abnormal annotations must state the reason so the audited agent can fix the issue from the markdown alone.
-- **MUST**: Treat the returned audit artifact path as run-scoped. Different audit runs for the same session may legitimately produce different files under `.sisyphus/tmp/audit/`.
-- **MUST**: Inspect the child reviewer session only when the audit artifact or child handoff has a concrete anomaly.
-- **MUST**: When anomaly-reviewing the child reviewer process, use `history-recall` plus `opencode-history-grep show/grep` as the primary workflow.
-- **MUST**: If anomaly review is needed and the child `session_id` is already known, skip discovery grep and start directly from `show --session <child-session-id> --all --type message`, then inspect whether it wrote the audit template before running `--type all --full-text` for judgment.
-- **MUST**: Preserve or state the audit artifact path and rectification goals before compressing any reviewer-process history.
-- **MUST**: If the target `session_id` is unknown, locate it with `opencode-history-grep grep --query "<exact user quote>" --type user --page-size 5` before delegating.
-- **NEVER**: Spawn a fresh reviewer child when direct continuation of the interrupted child is still possible. Reason: that discards context and makes the audit chain harder to verify.
-- **NEVER**: Use native `session_read` / `session_info` as the primary evidence path for reviewing the child execution process. Reason: this workflow is specifically validating history-based audit behavior, so the child's actual execution trace should be inspected through the same grep/show history pipeline.
-- **NEVER**: Use `session_list`, date listing, or project-path listing to discover the current session. Reason: those listings can miss active or differently rooted sessions; exact user-quote grep is the reliable discovery path for this workflow.
-- **NEVER**: Use discovery grep when the child `session_id` is already known. Reason: that needlessly downgrades an inspection problem into a search problem and makes it easier to miss parts of the reviewer run.
-- **NEVER**: Routinely audit the reviewer session when the returned audit artifact is readable, well-formed, and evidence-backed. Reason: reviewer self-audit should be an exception path, not recursive default overhead.
-- **NEVER**: If anomaly review is required, judge the reviewer process only from its final answer. Reason: the path-only output intentionally hides the process; anomaly review must inspect the reviewer session itself.
-- **NEVER**: Judge tool compliance from `--type message` output. Reason: message-only output intentionally hides tool calls and tool results.
-- **NEVER**: Insert a truncated `--type all` overview as a required reviewer-process audit step. Reason: current audit flow intentionally goes from message-level intent analysis to full-text execution evidence.
-- **NEVER**: Compress away the only bridge from the conversation to the audit file. Reason: without that bridge, later rectification may lose which artifact is authoritative.
-
-## Output
-
-Unless the caller explicitly asks for prose, the end state of this orchestration is:
-
-1. a completed audit file for the target session
-2. a decision that the audit artifact is usable, or a concrete anomaly report if it is not
-3. a decision on whether rectification can begin or another reviewer iteration is necessary
+Return the report path and whether rectification can begin. Do not launch an additional candidate Oracle for the same retrospective review object.

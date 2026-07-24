@@ -11,6 +11,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 
 def _load_cli_api() -> Any:
     package_root = str(Path(__file__).resolve().parents[1] / "src")
@@ -30,6 +32,16 @@ LONG_TOOL_OUTPUT = "\n".join(
         *(f"raw middle line {index}" for index in range(30)),
         "line after",
         "footer",
+    ]
+)
+
+LONG_QUESTION_ANSWER = "\n".join(
+    [
+        "custom answer start",
+        *(f"custom answer context {index}" for index in range(12)),
+        "custom-answer-middle-marker",
+        *(f"custom answer detail {index}" for index in range(12)),
+        "custom answer end",
     ]
 )
 
@@ -216,6 +228,62 @@ def _create_history_db(path: Path) -> None:
                     ),
                 ),
                 (
+                    "part-question-result",
+                    "message-assistant",
+                    "session-cli",
+                    113,
+                    113,
+                    json.dumps(
+                        {
+                            "type": "tool",
+                            "callID": "tool-question",
+                            "tool": "question",
+                            "state": {
+                                "status": "completed",
+                                "input": {
+                                    "questions": [
+                                        {
+                                            "header": "Review mode",
+                                            "question": "Which review mode should be used?",
+                                            "options": [
+                                                {
+                                                    "label": "Strict",
+                                                    "description": "Use the strict review path.",
+                                                }
+                                            ],
+                                        },
+                                        {
+                                            "header": "Custom constraint",
+                                            "question": "Describe the custom review constraint.",
+                                            "options": [
+                                                {
+                                                    "label": "Provide custom answer",
+                                                    "description": "Enter a custom constraint instead.",
+                                                }
+                                            ],
+                                        }
+                                    ]
+                                },
+                                "output": (
+                                    'User has answered your questions: "Which review mode should be used?"="Strict", '
+                                    f'"Describe the custom review constraint."="{LONG_QUESTION_ANSWER}".'
+                                ),
+                                "title": "question",
+                                "metadata": {},
+                                "time": {"start": 113, "end": 114},
+                            },
+                        }
+                    ),
+                ),
+                (
+                    "part-assistant-follow-up-text",
+                    "message-assistant",
+                    "session-cli",
+                    115,
+                    115,
+                    json.dumps({"type": "text", "text": "assistant follow-up after tools"}),
+                ),
+                (
                     "part-other-user-text",
                     "message-other-user",
                     "session-other",
@@ -353,6 +421,15 @@ def test_directory_help_describes_root_and_child_prefix_matching() -> None:
     assert "child directory" in grep_help
     assert "same path" in grep_help
     assert "prefix" in grep_help
+
+
+def test_show_help_describes_unique_text_range_endpoints() -> None:
+    parser = cli.build_parser()
+
+    show_help = parser._subparsers._group_actions[0].choices["show"].format_help()
+
+    assert "quoted text:<literal>" in show_help
+    assert "uniquely matches one filtered block" in show_help
 
 
 def test_grep_command_supports_directory_and_time_filters(tmp_path: Path) -> None:
@@ -552,8 +629,116 @@ def test_show_command_defaults_all_view_to_message_blocks(tmp_path: Path) -> Non
 
     assert exit_code == 0
     assert "[user_text]" in output
+    assert "[user_decision]" in output
     assert "[assistant_text]" in output
     assert "[tool_result]" not in output
+
+
+def test_show_command_user_type_includes_completed_question_decisions(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "user",
+            "--full-text",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "[user_text]" in output
+    assert "[user_decision]" in output
+    assert "Which review mode should be used?" in output
+    assert "Use the strict review path." in output
+    assert '"Strict"' in output
+    assert "custom-answer-middle-marker" in output
+    assert "[assistant_text]" not in output
+    assert "[tool_result]" not in output
+
+
+def test_show_command_combines_user_and_assistant_types_in_conversation_order(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "user",
+            "--type",
+            "assistant",
+            "--full-text",
+        ]
+    )
+
+    assert exit_code == 0
+    assert output.index("[user_text]") < output.index("[assistant_text]") < output.index("[user_decision]")
+    assert "[tool_result]" not in output
+
+
+def test_show_command_assistant_type_combines_visible_text_parts_and_excludes_tools(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "assistant",
+            "--full-text",
+        ]
+    )
+
+    assert exit_code == 0
+    assert output.index("assistant context") < output.index("assistant follow-up after tools")
+    assert output.count(">>> [assistant_text]") == 1
+    assert "[tool_result]" not in output
+    assert "[user_decision]" not in output
+
+
+def test_grep_tool_result_type_keeps_completed_question_decisions(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "grep",
+            "--repository",
+            str(repository_path),
+            "--query",
+            "Which review mode should be used?",
+            "--type",
+            "tool_result",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "[user_decision]" in output
 
 
 def test_show_command_supports_all_type_and_full_text(tmp_path: Path) -> None:
@@ -637,6 +822,109 @@ def test_show_command_supports_open_ended_block_index_range_for_all_view(tmp_pat
     assert "[tool_result]" in output
 
 
+def test_show_command_supports_unique_text_range_for_all_view(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "all",
+            "--from",
+            "text:assistant context",
+            "--to",
+            "text:needle match line",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "[user_text]" not in output
+    assert "[assistant_text]" in output
+    assert "[tool_result]" in output
+
+
+def test_show_command_resolves_text_range_after_type_filtering(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "user",
+            "--from",
+            "text:needle",
+            "--to",
+            "text:needle",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "[user_text]" in output
+    assert "[tool_result]" not in output
+
+
+def test_show_command_rejects_text_range_without_a_match(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    with pytest.raises(SystemExit, match="matched no blocks"):
+        _run_cli(
+            [
+                "show",
+                "--session",
+                "session-cli",
+                "--repository",
+                str(repository_path),
+                "--all",
+                "--type",
+                "all",
+                "--from",
+                "text:missing boundary",
+            ]
+        )
+
+
+def test_show_command_rejects_text_range_with_multiple_matches(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    with pytest.raises(SystemExit, match="matched multiple blocks"):
+        _run_cli(
+            [
+                "show",
+                "--session",
+                "session-cli",
+                "--repository",
+                str(repository_path),
+                "--all",
+                "--type",
+                "all",
+                "--from",
+                "text:needle",
+            ]
+        )
+
+
 def test_show_command_block_reads_complete_raw_tool_output_by_block_id(tmp_path: Path) -> None:
     database_path = tmp_path / "history.db"
     repository_path = tmp_path / "compiled_repo"
@@ -659,6 +947,60 @@ def test_show_command_block_reads_complete_raw_tool_output_by_block_id(tmp_path:
     assert "[tool_result]" in output
     assert "raw middle line 15" in output
     assert "lines omitted" not in output
+
+
+def test_show_command_block_reads_question_input_and_selected_answer(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--block",
+            "message-assistant:0003",
+        ]
+    )
+
+    assert exit_code == 0
+    assert '"question": "Which review mode should be used?"' in output
+    assert '"description": "Use the strict review path."' in output
+    assert '"Which review mode should be used?"="Strict"' in output
+    assert "custom-answer-middle-marker" in output
+
+
+def test_show_user_decision_preserves_long_custom_answer_for_text_endpoint(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    cli.DEFAULT_UPSTREAM_DATABASE = str(database_path)
+
+    exit_code, output = _run_cli(
+        [
+            "show",
+            "--session",
+            "session-cli",
+            "--repository",
+            str(repository_path),
+            "--all",
+            "--type",
+            "user",
+            "--from",
+            "text:custom-answer-middle-marker",
+            "--to",
+            "text:custom-answer-middle-marker",
+            "--full-text",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "[user_decision]" in output
+    assert "custom-answer-middle-marker" in output
 
 
 def test_show_command_block_supports_comma_separated_ids_and_indexes(tmp_path: Path) -> None:

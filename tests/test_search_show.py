@@ -313,8 +313,10 @@ def test_search_compiled_repository_supports_block_type_filters(tmp_path: Path) 
 
 
 def test_normalize_block_type_filters_supports_message_and_tool_aliases() -> None:
-    assert normalize_block_type_filters(["message"]) == {"user_text", "assistant_text"}
-    assert normalize_block_type_filters(["tool"]) == {"tool_call", "tool_result"}
+    assert normalize_block_type_filters(["user"]) == {"user_text", "user_decision"}
+    assert normalize_block_type_filters(["message"]) == {"user_text", "user_decision", "assistant_text"}
+    assert normalize_block_type_filters(["tool"]) == {"tool_call", "tool_result", "user_decision"}
+    assert normalize_block_type_filters(["tool_result"]) == {"tool_result", "user_decision"}
 
 
 def test_paginate_search_results_defaults_to_ten_per_page(tmp_path: Path) -> None:

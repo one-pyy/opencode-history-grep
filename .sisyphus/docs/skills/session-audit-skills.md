@@ -1,113 +1,75 @@
-# opencode-history-grep — session audit skills
+# opencode-history-grep — Oracle Session Review Skills
 
 状态：**已实现**
 
 ## 目标
 
-本项目维护两个 session 审查 skill：
+本项目维护 Oracle 回顾性 `session` 模式的两层 skill：
 
-- `skills/audit-session/SKILL.md`
-- `skills/orchestrate-session-audit/SKILL.md`
+- `opencode-history-grep/skills/audit-session/SKILL.md`
+- `opencode-history-grep/skills/orchestrate-session-audit/SKILL.md`
 
-这里的 session audit 是正式回顾性、写文件的审查流程。Oracle 也可以加载 `history-recall` 读取有边界的 session 证据，但它只对下一份未确认 candidate 做只读两阶段比较，不写 audit 文件，也不替代本流程。
+`audit-session` 是 Oracle reviewer 侧证据规程；`orchestrate-session-audit` 是 Owner caller 侧入口。两者共用 Oracle finding 报告和 Owner 裁决门槛，不维护另一套 reviewer、整改文件或自动勾选流程。
 
-它们的 canonical 版本在本仓库内。外部 OpenCode skill 路径应是软连接：
+canonical 文件位于 `opencode-history-grep/skills/`；`/root/_/opencode/config/skills/` 与 `/root/.config/opencode/skills/` 通过同一 inode 暴露当前内容，不维护第二份文本。
 
-```text
-/root/_/opencode/config/skills/audit-session -> /root/_/opencode/my_plugins/opencode-history-grep/skills/audit-session
-/root/_/opencode/config/skills/orchestrate-session-audit -> /root/_/opencode/my_plugins/opencode-history-grep/skills/orchestrate-session-audit
-```
+## 审查对象
 
-## 职责分工
+Session 审查比较的是：最后一次执行授权时的有效契约，与最终执行流程、最终状态、验证和交付是否一致。
 
-`audit-session` 是 reviewer 侧规程：给定 `session_id` 后，它负责读取历史、拆阶段、写 run-scoped 审查文件、二次验证并输出审查文件路径。
+有效契约是累积结果：保留仍有效的要求，应用后续修订，包含用户明确接受的 assistant 计划/docs、最终授权所回答的 assistant 上下文和通过 `question` 工具形成的用户决策，并标记被后续用户方向取代的要求。bounded user+assistant view 负责还原批准对象；assistant 内容只有被明确接受后才成为契约。它不是最后一条用户消息的字面副本。
 
-`orchestrate-session-audit` 是 caller 侧规程：它负责发现目标 `session_id`、委派 reviewer、在中断时续同一 reviewer 会话、读取审查文件，并判断审查产物是否可用于整改。
+早期废弃方案不再按旧要求验收；只有未回滚副作用、越权动作、用户状态损害或仍影响最终结果的验证缺口进入最终报告。
 
-Oracle candidate review 与本流程的边界：
+## Phase 1 — 角色过滤的有效契约
 
-- Oracle Phase 1 只能读取 source boundary 之前的历史，并先返回独立影子参照；Phase 2 才读取 candidate 与 execution evidence。
-- Session audit 默认读取完整已发生执行历史，因此不能声称 candidate 隔离或 blind comparison。
-- 需要持久整改清单时使用本流程；需要在交付前检查下一份 plan/docs/实现时使用 Oracle 两阶段流程。
-
-## 审查读取与落盘顺序
-
-session 审查使用“先固定意图，再看执行证据”的顺序：
-
-1. `opencode-history-grep show --session <id> --all --type message`
-   - 用于重建用户意图、需求变化、判断、方案和阶段边界。
-2. 写入 run-scoped 审查模板。
-   - 模板必须先记录 message 层意图分析和 Phase 边界。
-   - 此时不能判断工具执行是否合规，核验项必须保持未勾选。
-3. `opencode-history-grep show --session <id> --all --type all --full-text`
-   - 用作工具执行合规判断的 full-text 证据源。
-   - 不再要求先跑单独的截断版 `--type all` overview。
-4. 回读同一个审查文件并回填结论。
-   - 将未勾选项改成 `[x]` 或带原因的 `[异常: ...]`。
-   - 在文件末尾追加具体整改目标和修改建议。
-
-`--type message` 只显示用户与 assistant 对话块，适合固定需求和意图；`--type all --full-text` 显示工具调用和工具结果，适合最终判断执行是否相符。不能从 `message` 输出推断工具行为，也不能在写初始模板前让截断工具流影响意图分析。
-
-## Caller 侧产物验收与压缩边界
-
-`orchestrate-session-audit` 在拿到 reviewer 返回的审查文件路径后，必须先读取该 markdown。只拿到路径不等于已经理解整改目标。
-
-默认不复核 reviewer 会话本身。caller 只需要验收审查产物是否可用：路径是否是 run-scoped、文件是否可读、异常标注是否写明原因、整改目标是否具体、是否覆盖调用时指定的 audit focus。
-
-只有出现具体异常时才回看 reviewer 会话，例如：没有返回审查文件路径、文件缺失、裸 `[异常]`、初始模板疑似直接打勾、审查结果和已知事实冲突、漏掉明确 audit focus、或 child 中断续跑行为需要确认。
-
-需要异常复核 reviewer 会话时，如果 child `session_id` 已知，应按当前审查纪律读取：
-
-1. `opencode-history-grep show --session <child-session-id> --all --type message`
-2. 分析 reviewer 是否先重建意图、写初始审查模板，再判断工具执行
-3. `opencode-history-grep show --session <child-session-id> --all --type all --full-text`
-
-不应在 message pass 和 full-text pass 之间强制插入截断版 `--type all` overview。原因是 reviewer-process 异常复核也应先固定 message 层意图，再从 full-text 工具证据判断执行是否合规。
-
-验收审查产物后可以压缩过程记录，但必须先确保以下事实已经保存在当前上下文或持久文件里：审查文件路径、整改目标、产物可用性结论，以及指向审查文件的桥接记录。不能压掉唯一说明“哪个审查文件是权威整改来源”的记录。
-
-## 会话定位规则
-
-如果目标 `session_id` 未知，`orchestrate-session-audit` 应使用目标会话中的唯一用户原话定位：
+Oracle 先读取严格限制在目标任务内的 user+assistant 可见消息：
 
 ```bash
-opencode-history-grep grep --query "<a distinctive exact user quote from the target session>" --type user --page-size 5
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --type 'user' --type 'assistant' --from 'text:<exact unique first user requirement>' --to 'text:<exact unique final authorization>' --full-text
 ```
 
-不要用 `session_list`、日期列表或项目路径列表定位当前会话。原因是这些列表可能漏掉活跃会话或不同 root 的会话；唯一用户原话直接查询审查工作流使用的 compiled history，更可靠。
+source start/to 的原文摘录各至少 20 个字符；输入不足 20 个字符时使用整条输入。歧义时可改用完整 user block id，但调用包仍保留原文。user view 自动保留 ordinary user text 和 completed `question` 的 input/选项/答案；assistant view 用来识别用户批准、修订或拒绝的对象，未被接受的 assistant 自述不属于 source contract。已接受 docs 必须提供精确 path、accepted ref/block 和接受证据；Phase 1 不宽泛读取 tool，仅在精确版本无法恢复时读取对应写入 block。
 
-## 范围续审
+Oracle 返回 `<oracle_reference mode="session">` XML 外层，内部包含有效契约、已取代要求、检查单元、预期证据、保护边界与输入缺口。此阶段不读取工具证据，不输出 finding、verdict 或修复建议。
 
-如果主 agent 在一次审查后继续修改，审查员可以从已知 block 边界继续读取新操作：
+## Phase 2 — 有边界的执行证据
+
+Owner 续用同一 Oracle session，Oracle 再读取：
 
 ```bash
-opencode-history-grep show --session <id> --all --type all --from <block-id-or-index> --full-text
+session_id='<provided session_id>'
+boundary_marker='<provided boundary_marker>'
+opencode-history-grep show --session "$session_id" --all --type 'all' --from 'text:<exact unique execution start>' --to "text:$boundary_marker" --full-text
 ```
 
-`--from` / `--to` 接受 block id，例如 `msg_dbfb10314001i6KZwkoOJzLYTC:0198`，也接受零基 block 序号。任一侧不传表示开放边界。
+已知长工具结果仍不完整时才用 `--block` 回源。Oracle 对照 Phase 1 检查最终执行、状态、验证、docs 影响、Knowledge DB 建议和交付，并返回 report-ready Markdown。
 
-如果某个工具输出在 compile 阶段已经被摘要截断，审查员应按已知 block 精确读取完整原始内容：
+Oracle 只生成问题部分：ID、分类、说明、触发链、契约依据、执行证据、影响和不确定性。`[反馈与备注]（主 Agent填写）` 和最终 verdict 由 Owner 填写；Oracle 不写文件，也不把 finding 自动转成整改 Todo。
 
-```bash
-opencode-history-grep show --session <id> --block <block-id>,<block-id-or-index>
-```
+## Caller 工作流
 
-`--block` 支持逗号分隔多个 block，也支持重复传参；它先用 compiled view 定位 `message_id` / `part_id`，再回源 SQLite 读取原始记录，因此适合核验长工具输出。
+`orchestrate-session-audit` 负责：
 
-## 产物规则
+1. 确定 target session；未知时使用唯一用户原话配合 `grep --type user` 定位。
+2. 固定目标任务的 source start/source boundary 原文与 endpoint、accepted source artifacts、execution start/boundary 和 review focus。
+3. 调用 Oracle，并加载 `audit-session` 与 `history-recall` 完成 Phase 1。
+4. 续用同一 Oracle session 完成 Phase 2；中断时使用 `continue-child-agent` 恢复原 Phase 1 参照。
+5. Owner 将 Oracle 内容写入 `.sisyphus/tmp/oracle-reviews/YYYY-MM-DD_<任务标题>.md`，填写反馈和最终 verdict。
 
-审查报告写入 run-scoped 路径：
+同一个 review object 不再叠加 candidate Oracle。无法恢复干净 Phase 1 时必须标记为 candidate-exposed retrospective review。
 
-```text
-.sisyphus/tmp/audit/audit_{session_id}.{run_id}.md
-```
+`current_session_id` 的 bare `message_id` 只作来源识别；调用方把返回的 `session_id` 传给带引号的 `--session`，并把唯一 marker 直接作为带引号的 `text:<literal>` all-block execution boundary。Phase 1 的 role-filtered 起止点使用目标任务首条要求和最终授权的唯一文本；文本在类型过滤后只能命中一个 block，零命中或多命中时再用 `grep --type 'user'` 选择完整 block id。
 
-同一个 session 可以有多次审查运行，因此不能把审查文件设计成 session-scoped 单例。
+Phase 2 对每个主要动作记录风险/失败模式，并明确检查最终 workspace state、行为/CLI/安装路径/symlink/skill workflow/output format 等 docs 影响，以及是否产生值得长期记录的 decision、trap、pattern 或 operational rule。Oracle 输出不完整时续用同一 session 修正；压缩前保留报告路径、审查边界、当前 verdict/异常和后续目标。
 
-被审查者必须读取这份 markdown 后再整改；只拿到路径不等于已经理解问题。审查者标注异常时必须写清原因，例如 `[异常: skipped full-text evidence pass before judging tool output]`，不能只写裸 `[异常]`。这样被审查者可以只靠审查文件定位问题和整改目标。
+## 成功标准
 
-审查报告每个相关 Phase 至少检查：需求符合度、范围控制、验证证据、docs 影响、Knowledge DB 建议、工作区状态。docs 影响覆盖 README、docs、skill 文本、CLI help 或其他用户可见说明是否需要同步；Knowledge DB 建议只判断是否应写入，不由审查员自动写入。
-
-## 维护规则
-
-修改这两个 skill 时，应只改仓库内 canonical 文件，再通过软连接暴露到 `/root/_/opencode/config/skills/`。不要在外部路径维护第二份内容，避免规则漂移。
+- Phase 1 使用 bounded user+assistant 历史；user view 自动包含 answered `question` decisions，assistant 内容只有明确接受后成为契约。
+- 已接受 source artifacts 具备 path、accepted ref/block 和接受证据；candidate/execution-time docs 留在 Phase 2。
+- source start/source boundary 准确限制在目标任务，不包含同 session 更早任务。
+- Phase 2 使用同一 Oracle session 和 bounded full-text execution evidence。
+- superseded requirement 不被当成最终验收标准。
+- Owner 独立核验事实、契约、范围、影响和建议比例性。
+- 报告可独立支持整改或等待用户裁决，不依赖 reviewer 自述。

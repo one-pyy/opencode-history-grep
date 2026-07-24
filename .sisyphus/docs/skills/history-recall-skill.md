@@ -59,10 +59,17 @@
    - `show` 也应先自动 compile / refresh，避免回看已知 session 时读到旧 compiled view
    - 只对值得继续看的命中结果回跳完整上下文
 5. **审查已知 session 时直接读取边界**
-   - 已知 `session_id` 时不重新搜索 session
-   - Oracle 两阶段审查第一阶段只读到 source boundary；第二阶段才读取 execution boundary 和 candidate evidence
-   - endpoint 是 tool result marker 时使用 `--type all`，避免先按 message 类型过滤后丢失边界
-   - 无法定位干净的候选前边界时，明确标记为 candidate-exposed retrospective review
+    - 已知 `session_id` 时不重新搜索 session
+    - Oracle candidate 模式第一阶段只读到 source boundary；第二阶段才读取 candidate evidence
+    - Oracle session 模式第一阶段使用 `--type 'user' --type 'assistant' --from 'text:<source-start>' --to 'text:<source-boundary>'` 读取严格受限的可见对话；assistant 内容只在用户明确接受后成为契约，第二阶段才读取 bounded full execution evidence
+    - `current_session_id` 的 bare `message_id` 不是 range endpoint；调用方把返回的 `session_id` 作为带引号的 `--session` 值，并把唯一 marker 直接作为带引号的 `text:<literal>` all-block endpoint
+    - `text:` 在 `--type` 过滤后执行区分大小写的字面子串匹配，只允许唯一命中；零命中或多命中时失败，再用 `grep` 查看候选并选择完整 block id
+    - endpoint 是 tool result marker 时使用 `--type 'all'`，避免先按 message 类型过滤后丢失边界
+    - Session Phase 1 的 source start/to 原文摘录各至少 20 个字符；消息不足 20 个字符时使用整条消息。即使歧义后改用 block id，调用包仍保留该原文
+    - `question` 工具中的用户选择原生保存在 completed tool result；编译视图将它标成 `user_decision`，因此 `--type user` 自动保留问题 input、选项说明和用户答案，同时不会纳入其他 tool result
+    - `--type assistant` 将同一 assistant message 的可见 text parts 按创建时间合并为一个 block；不包含 reasoning/system/tool 内容，也不声称保留 text 与 tool 的交错顺序
+    - 已接受 source docs 由 caller 提供精确 path、accepted ref/block 和接受证据；Phase 1 不宽泛读取 tool，仅在精确版本无法恢复时定向读取对应写入 block
+    - 无法定位干净的候选前边界时，明确标记为 candidate-exposed retrospective review
 
 ## skill 应明确告诉模型的边界
 
@@ -102,7 +109,8 @@ opencode-history-grep grep --repository .opencode-history-grep --since 2026-04-0
 ### 情况 3：看到命中后回跳
 
 ```bash
-opencode-history-grep show --repository .opencode-history-grep --session <session-id> --anchor <block-id>
+session_id='<provided session_id>'
+opencode-history-grep show --repository '.opencode-history-grep' --session "$session_id" --anchor '<block-id>'
 ```
 
 ## 对 skill 文本的要求
@@ -116,8 +124,9 @@ skill 正文应清楚写出：
 - 分页参数
 - 类型多选筛选参数
 - `show --all / --before / --after / --full-text`
-- `show --from / --to / --block` 的 inclusive block 边界与 raw recovery 语义
-- 按 `session_id` 做 Oracle review 或 session audit 时必须使用该 skill
+- `show --from / --to / --block` 的 inclusive block 边界、quoted `text:<literal>` 唯一匹配与 raw recovery 语义；`user`/`message`/`tool_result`/`tool`/`all` 视图均按各自语义保留 `user_decision`
+- `show --type user` / `--type assistant` 的角色过滤，以及 session 模式 bounded user+assistant Phase 1 → all-block Phase 2 的顺序
+- 按 `session_id` 做 Oracle candidate/session review 时必须使用该 skill
 - 何时必须先 compile
 - 何时应该先收窄范围而不是直接 grep
 - 当前 grep 是文本匹配，因此 query 需要主动尝试近义词、不同措辞与中英文变体
@@ -131,4 +140,4 @@ skill 正文应清楚写出：
 2. 用户说“帮我找上周关于 Y 的历史”时，知道优先加时间筛选
 3. 模型不会退回普通 grep 或直接扫 SQLite 文本
 4. 模型知道先 grep，再对重点结果 show，而不是盲目展开整段历史
-5. reviewer 已知 session 和边界时直接使用 bounded `show`，不会在独立审查第一阶段提前读取 candidate
+5. reviewer 已知 session 和边界时直接使用 bounded `show`，不会在 candidate Phase 1 提前读取候选，也不会把 session Phase 1 中未被接受的 assistant 自述或工具执行当作契约

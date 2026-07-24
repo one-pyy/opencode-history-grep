@@ -17,14 +17,14 @@ DEFAULT_PAGE_SIZE = 10
 DEFAULT_TEXT_MATCH_MAX_CHARS = 500
 DEFAULT_TEXT_SHOW_MAX_CHARS = 1200
 BLOCK_FILTER_ALIASES = {
-    "all": {"user_text", "assistant_text", "tool_call", "tool_result"},
-    "user": {"user_text"},
+    "all": {"user_text", "user_decision", "assistant_text", "tool_call", "tool_result"},
+    "user": {"user_text", "user_decision"},
     "assistant": {"assistant_text"},
     "ai": {"assistant_text"},
     "tool_call": {"tool_call"},
-    "tool": {"tool_call", "tool_result"},
-    "tool_result": {"tool_result"},
-    "message": {"user_text", "assistant_text"},
+    "tool": {"tool_call", "tool_result", "user_decision"},
+    "tool_result": {"tool_result", "user_decision"},
+    "message": {"user_text", "user_decision", "assistant_text"},
 }
 
 
@@ -271,6 +271,24 @@ def _resolve_block_range_endpoint(blocks: list[dict[str, Any]], value: str) -> i
     for index, block in enumerate(blocks):
         if str(block["block_id"]) == value:
             return index
+
+    if value.startswith("text:"):
+        literal = value.removeprefix("text:")
+        if not literal:
+            raise ValueError("show text range endpoint must not be empty")
+
+        matches = [
+            (index, str(block["block_id"]))
+            for index, block in enumerate(blocks)
+            if literal in str(block.get("display_text", ""))
+        ]
+        if len(matches) == 1:
+            return matches[0][0]
+        if not matches:
+            raise ValueError(f"show text range endpoint {literal!r} matched no blocks")
+        block_ids = ", ".join(block_id for _, block_id in matches)
+        raise ValueError(f"show text range endpoint {literal!r} matched multiple blocks: {block_ids}")
+
     raise KeyError(value)
 
 

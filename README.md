@@ -83,19 +83,31 @@ opencode-history-grep grep --regex --since 2026-04-01 --until 2026-04-23 --query
 View full context around a hit:
 
 ```bash
-opencode-history-grep show --session <session-id> --anchor <block-id> --before 5 --after 5
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --anchor '<block-id>' --before 5 --after 5
 ```
 
 Read a whole compiled session:
 
 ```bash
-opencode-history-grep show --session <session-id> --all
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all
 ```
+
+Read an inclusive range using unique text in the filtered session view:
+
+```bash
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --type 'all' --from 'text:<exact unique start>' --to 'text:<exact unique end>' --full-text
+```
+
+Quote every `text:<literal>` endpoint. Text matching is case-sensitive and happens after `--type` filtering; zero or multiple matching blocks cause the command to fail.
 
 Read complete raw content for specific compiled blocks:
 
 ```bash
-opencode-history-grep show --session <session-id> --block <block-id>,<block-id-or-index>
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --block '<block-id>,<block-id-or-index>'
 ```
 
 `--block` uses the compiled view only for block-to-message/part location, then reads the upstream SQLite record so long tool outputs are not limited by compile-time summaries.
@@ -103,7 +115,8 @@ opencode-history-grep show --session <session-id> --block <block-id>,<block-id-o
 Only use `--full-text` when you really need long raw block content:
 
 ```bash
-opencode-history-grep show --session <session-id> --all --full-text
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --full-text
 ```
 
 ### Type filters
@@ -114,6 +127,8 @@ opencode-history-grep show --session <session-id> --all --full-text
 - `tool_result`: tool output and errors
 - `tool`: `tool_call + tool_result`
 - `message`: `user + assistant`
+
+`user` also includes completed `question` tool decisions, preserving the question input, option descriptions, and selected answer. `message` therefore includes those decisions through `user`; `tool_result`, `tool`, and `all` also retain them.
 
 Recommended defaults for recall:
 
@@ -207,19 +222,31 @@ opencode-history-grep grep --regex --since 2026-04-01 --until 2026-04-23 --query
 回看命中的上下文：
 
 ```bash
-opencode-history-grep show --session <session-id> --anchor <block-id> --before 5 --after 5
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --anchor '<block-id>' --before 5 --after 5
 ```
 
 直接看整会话：
 
 ```bash
-opencode-history-grep show --session <session-id> --all
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all
 ```
+
+按筛选后视图中的唯一文本读取 inclusive range：
+
+```bash
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --type 'all' --from 'text:<exact unique start>' --to 'text:<exact unique end>' --full-text
+```
+
+每个 `text:<literal>` endpoint 都要加引号。文本匹配区分大小写，并在 `--type` 过滤后执行；零命中或多命中都会让命令失败。
 
 读取指定 compiled block 的完整原始内容：
 
 ```bash
-opencode-history-grep show --session <session-id> --block <block-id>,<block-id-or-index>
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --block '<block-id>,<block-id-or-index>'
 ```
 
 `--block` 只用 compiled view 做 block 到 message/part 的定位，然后回源 SQLite 读取原始记录，所以长工具输出不会受 compile 阶段摘要截断影响。
@@ -227,7 +254,8 @@ opencode-history-grep show --session <session-id> --block <block-id>,<block-id-o
 只有确实需要长文本或长工具输出时，再用 `--full-text`：
 
 ```bash
-opencode-history-grep show --session <session-id> --all --full-text
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --full-text
 ```
 
 ### 类型筛选
@@ -238,6 +266,8 @@ opencode-history-grep show --session <session-id> --all --full-text
 - `tool_result`：工具输出和错误
 - `tool`：`tool_call + tool_result`
 - `message`：`user + assistant`
+
+`user` 同时包含已完成的 `question` 工具决策，保留问题输入、选项说明和用户选择。因此 `message` 通过 `user` 包含这些决策；`tool_result`、`tool` 和 `all` 也会保留它们。
 
 默认推荐：
 
