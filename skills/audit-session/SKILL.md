@@ -13,7 +13,7 @@ Use this skill only inside an Oracle retrospective `session` review. Oracle rema
 - source-start excerpt and source-boundary excerpt, each at least 20 characters or the entire message when shorter, plus the resolved endpoint for each
 - execution start and execution boundary
 - accepted source artifacts, each with exact path, accepted ref or block, and acceptance evidence
-- review focus and report ID prefix
+- review focus, allowed semantic changes, affected authoritative sections, protected invariants, direct dependencies, explicit exclusions, and report ID prefix
 
 If these boundaries cannot be established, report the exact gap. Do not silently treat the whole session as a clean independent source.
 
@@ -36,22 +36,23 @@ Reconstruct the contract active at the final execution authorization:
 - requirements superseded by later user direction
 - required verification and delivery evidence
 
+Keep only requirements that can affect the stated review focus. Cite exact user blocks and accepted artifact headings instead of restating the conversation or source documents. Judge the caller's scope before reading broadly: narrow an overbroad range, and add only a concrete dependency or protected invariant that is necessary to evaluate the requested object. A dependency is concrete only when the scoped source directly references it or it lies on the required execution/propagation path; similar names, shared directories/domains, and possible contextual relevance do not qualify. For a narrow review object, each Phase 1 section normally contains one to three bullets and groups related references.
+
 The user view includes ordinary user text and completed `question` decisions with their input and selected answer. Assistant text identifies what the user approved, amended, or rejected; it is not authoritative without explicit acceptance in the bounded conversation. For every accepted source artifact, inspect the exact accepted path/version or block and verify the supplied acceptance evidence. Do not broadly read tool history. Use a targeted write block only when the accepted artifact cannot be recovered from its exact accepted version. Keep ambiguous acceptance unresolved for the owner.
 
 Return exactly one outer XML envelope with readable Markdown inside:
 
 ```xml
 <oracle_reference mode="session">
-## Review scope and boundaries
-## Effective source contract
-## Superseded requirements
-## Review units and expected evidence
-## Protected boundaries and material risks
-## Input gaps
+## Review object and allowed changes
+## Protected invariants and source references
+## Direct dependencies
+## Material failure modes and Phase 2 evidence
+## Exclusions and input gaps
 </oracle_reference>
 ```
 
-Do not read general tool calls or tool results. Do not write findings, verdicts, or remediation in Phase 1.
+List only superseded requirements that would otherwise change the scoped review, and place them under `Exclusions and input gaps`. Do not read general tool calls or tool results. Do not write findings, verdicts, remediation, conversation summaries, or exhaustive contract restatements in Phase 1.
 
 ## Phase 2 — execution comparison
 
@@ -86,6 +87,7 @@ Leave `[反馈与备注]（主 Agent填写）` fields and the final report verdi
 ## Evidence and scope rules
 
 - Treat the bounded user+assistant conversation and accepted source artifacts as the source-contract layer. The user view already includes answered `question` decisions; assistant text becomes authoritative only through explicit acceptance.
+- Start from the caller's bounded review focus. Expand only for a cited dependency, propagation path, or protected invariant, and inspect only the additional evidence needed for that point.
 - Treat unaccepted assistant self-reports and general tool history as Phase 2 evidence, not Phase 1 authority.
 - Separate final-delivery mismatch from historical process risk.
 - Do not flag abandoned or superseded approaches when they left no relevant side effect.
