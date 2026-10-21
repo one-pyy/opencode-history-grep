@@ -21,6 +21,7 @@ class SessionCompileFingerprint:
     session_time_updated: int
     message_count: int
     last_message_created: int | None
+    compiler_version: int = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,12 +90,15 @@ def _compile_all_sessions_unlocked(
     manifest = load_repository_manifest(compiled_repository)
     summaries = reader.list_sessions(session_filter)
     compiled_session_ids: list[str] = []
-    filtered_session_ids = {summary.id for summary in summaries}
-    next_sessions: dict[str, SessionArtifactMetadata] = {
-        session_id: metadata
-        for session_id, metadata in manifest.sessions.items()
-        if session_id in filtered_session_ids
-    }
+    if session_filter is None:
+        filtered_session_ids = {summary.id for summary in summaries}
+        next_sessions: dict[str, SessionArtifactMetadata] = {
+            session_id: metadata
+            for session_id, metadata in manifest.sessions.items()
+            if session_id in filtered_session_ids
+        }
+    else:
+        next_sessions = dict(manifest.sessions)
 
     for summary in summaries:
         fingerprint = SessionCompileFingerprint(
@@ -196,6 +200,7 @@ def load_repository_manifest(repository: CompiledRepository | str | Path) -> Rep
                 session_time_updated=fingerprint_payload["session_time_updated"],
                 message_count=fingerprint_payload["message_count"],
                 last_message_created=fingerprint_payload["last_message_created"],
+                compiler_version=fingerprint_payload.get("compiler_version", 1),
             ),
             block_count=payload["block_count"],
             artifact_relpath=payload["artifact_relpath"],
@@ -250,6 +255,7 @@ def _block_to_json(block: CompiledBlock) -> dict[str, Any]:
         "message_id": block.message_id,
         "part_id": block.part_id,
         "block_id": block.block_id,
+        "time_created": block.time_created,
         "role": block.role,
         "block_type": block.block_type,
         "title": block.title,

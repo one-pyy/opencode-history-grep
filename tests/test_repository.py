@@ -265,6 +265,49 @@ def test_compile_all_sessions_skips_unchanged_sessions(tmp_path: Path) -> None:
     assert second.compiled_session_ids == ()
 
 
+def test_old_cache_refreshes_timestamps_per_session(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    reader = HistoryReader(database_path)
+    compile_all_sessions(reader, repository_path)
+    manifest_path = repository_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for session in manifest["sessions"].values():
+        session["fingerprint"].pop("compiler_version")
+        artifact_path = repository_path / session["artifact_relpath"]
+        artifact = json.loads(artifact_path.read_text())
+        for block in artifact["blocks"]:
+            block.pop("time_created")
+        artifact_path.write_text(json.dumps(artifact))
+    manifest_path.write_text(json.dumps(manifest))
+
+    assert len(select_sessions_for_recompile(reader, repository_path)) == 2
+    session_filter = import_module("opencode_history_grep.reader").SessionFilter(since=150)
+    filtered = compile_all_sessions(reader, repository_path, session_filter=session_filter)
+    assert filtered.compiled_session_ids == ("session-b",)
+    assert [item.session_id for item in select_sessions_for_recompile(reader, repository_path)] == ["session-a"]
+    assert compile_all_sessions(reader, repository_path).compiled_session_ids == ("session-a",)
+    assert compile_all_sessions(reader, repository_path).compiled_session_ids == ()
+    artifact = json.loads((repository_path / "sessions" / "session-b" / "full_view.json").read_text())
+    assert [block["time_created"] for block in artifact["blocks"]] == [200, 201]
+
+
+def test_filtered_compile_keeps_other_sessions_in_manifest(tmp_path: Path) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+
+    reader = HistoryReader(database_path)
+    compile_all_sessions(reader, repository_path)
+    session_filter = import_module("opencode_history_grep.reader").SessionFilter(since=150)
+
+    compile_all_sessions(reader, repository_path, session_filter=session_filter)
+
+    assert sorted(load_repository_manifest(repository_path).sessions) == ["session-a", "session-b"]
+    assert compile_all_sessions(reader, repository_path).compiled_session_ids == ()
+
+
 def test_compile_all_sessions_waits_for_repository_lock(tmp_path: Path) -> None:
     database_path = tmp_path / "history.db"
     repository_path = tmp_path / "compiled_repo"

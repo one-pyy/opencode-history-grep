@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -188,7 +188,7 @@ def _run_grep(
     )
     print()
     for result in page_result.results:
-        print(f"[{result.block_type}] session={result.session_id} anchor={result.anchor.block_id}")
+        print(f"[{result.block_type}] session={result.session_id} anchor={result.anchor.block_id} time={_format_timestamp(result.time_created)}")
         print(f'match: "{result.match_text}"')
         print()
     return 0
@@ -225,7 +225,7 @@ def _run_show(
         session = reader.load_session(session_id)
         raw_messages = {message.id: message for message in session.messages}
         for block in selected_blocks:
-            print(f"[{block.block_type}] {block.title} ({block.block_id})")
+            print(f"[{block.block_type}] {block.title} ({block.block_id}) time={_format_timestamp(block.time_created)}")
             print(_raw_block_text(block=block, raw_messages=raw_messages))
             print()
         return 0
@@ -257,10 +257,16 @@ def _run_show(
     print(f"session={shown.anchor.session_id} anchor={shown.anchor.block_id}")
     for block in shown.blocks:
         marker = ">>>" if block.block_id == shown.focus_block_id else "   "
-        print(f"{marker} [{block.block_type}] {block.title} ({block.block_id})")
+        print(f"{marker} [{block.block_type}] {block.title} ({block.block_id}) time={_format_timestamp(block.time_created)}")
         print(block.display_text)
         print()
     return 0
+
+
+def _format_timestamp(timestamp_ms: int | None) -> str:
+    if timestamp_ms is None:
+        return "unknown"
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _parse_block_ids(values: list[str]) -> list[str]:

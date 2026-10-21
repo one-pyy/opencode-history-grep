@@ -42,6 +42,7 @@ class SearchResult:
     match_text: str
     anchor: SearchAnchor
     score: int
+    time_created: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +63,7 @@ class ShowBlock:
     block_type: str
     title: str
     display_text: str
+    time_created: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +126,7 @@ def search_compiled_repository(
                     match_text=first_match_text,
                     anchor=SearchAnchor(session_id=session_id, block_id=str(block["block_id"])),
                     score=score,
+                    time_created=block.get("time_created"),
                 )
             )
             
@@ -198,6 +201,7 @@ def show_compiled_context(
             block_type=str(block["block_type"]),
             title=str(block["title"]),
             display_text=_show_display_text(block=block, full_text=full_text),
+            time_created=block.get("time_created"),
         )
         for block in blocks[start:end]
     )
@@ -238,6 +242,7 @@ def show_session_compiled_view(
             block_type=str(block["block_type"]),
             title=str(block["title"]),
             display_text=_show_display_text(block=block, full_text=full_text),
+            time_created=block.get("time_created"),
         )
         for block in payload_blocks
     )

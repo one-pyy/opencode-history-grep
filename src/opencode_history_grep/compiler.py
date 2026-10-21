@@ -45,6 +45,7 @@ class CompiledBlock:
     display_text: str
     anchors: tuple[CompiledAnchor, ...]
     metadata: Mapping[str, Any]
+    time_created: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +106,7 @@ def _build_text_block(*, session_id: str, message: HistoryMessage, ordinal: int,
         session_id=session_id,
         message_id=message.id,
         part_id=None,
+        time_created=message.time_created,
         ordinal=ordinal,
         role=message.role if message.role in ("user", "assistant") else "assistant",
         block_type=block_type,
@@ -164,6 +166,7 @@ def _build_tool_blocks(*, session_id: str, message: HistoryMessage, part: Histor
         session_id=session_id,
         message_id=message.id,
         part_id=part.id,
+        time_created=part.time_created,
         ordinal=ordinal,
         role=role,
         block_type=block_type,
@@ -191,6 +194,7 @@ def _build_compaction_block(*, session_id: str, message: HistoryMessage, part: H
         session_id=session_id,
         message_id=message.id,
         part_id=part.id,
+        time_created=part.time_created,
         ordinal=ordinal,
         role="assistant",
         block_type="compaction",
@@ -217,6 +221,7 @@ def _build_subtask_block(*, session_id: str, message: HistoryMessage, part: Hist
         session_id=session_id,
         message_id=message.id,
         part_id=part.id,
+        time_created=part.time_created,
         ordinal=ordinal,
         role="assistant",
         block_type="subtask",
@@ -233,6 +238,7 @@ def _make_block(
     session_id: str,
     message_id: str,
     part_id: str | None,
+    time_created: int,
     ordinal: int,
     role: BlockRole,
     block_type: BlockType,
@@ -263,6 +269,7 @@ def _make_block(
         display_text=display_text,
         anchors=(anchor,),
         metadata=_freeze_mapping(metadata),
+        time_created=time_created,
     )
 
 

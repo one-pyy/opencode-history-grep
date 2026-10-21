@@ -8,6 +8,7 @@ import sqlite3
 import subprocess
 import sys
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -303,6 +304,42 @@ def _run_cli(args: list[str]) -> tuple[int, str]:
     with redirect_stdout(stdout):
         exit_code = cli.main(args)
     return exit_code, stdout.getvalue()
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["grep", "--query", "needle"],
+        ["show", "--session", "session-cli", "--all", "--type", "all"],
+        ["show", "--session", "session-cli", "--anchor", "message-assistant:0002"],
+        ["show", "--session", "session-cli", "--block", "message-assistant:0002"],
+    ],
+)
+def test_history_output_defaults_to_utc8_timestamps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: list[str]) -> None:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    timestamp_ms = int(datetime(2026, 10, 13, 3, 10, 23, tzinfo=timezone.utc).timestamp() * 1000)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("UPDATE message SET time_created = time_created + ?", (timestamp_ms,))
+        connection.execute("UPDATE part SET time_created = ? WHERE id = 'part-tool-result'", (timestamp_ms + 1234,))
+        connection.execute("UPDATE part SET time_created = ? WHERE id = 'part-question-result'", (timestamp_ms + 2000,))
+    monkeypatch.setattr(cli, "DEFAULT_UPSTREAM_DATABASE", str(database_path))
+
+    exit_code, output = _run_cli([*args, "--repository", str(repository_path)])
+
+    assert exit_code == 0
+    tool_header = next(line for line in output.splitlines() if "[tool_result]" in line)
+    assert tool_header.endswith("time=2026-10-13 11:10:24")
+    if "--all" in args or args[0] == "grep":
+        user_header = next(line for line in output.splitlines() if "[user_text]" in line)
+        assert user_header.endswith("time=2026-10-13 11:10:23")
+
+
+def test_timestamp_handles_epoch_and_utc8_date_rollover() -> None:
+    assert cli._format_timestamp(0) == "1970-01-01 08:00:00"
+    timestamp_ms = int(datetime(2026, 10, 12, 16, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    assert cli._format_timestamp(timestamp_ms) == "2026-10-13 00:00:00"
 
 
 def test_compile_command_triggers_full_compile(tmp_path: Path) -> None:

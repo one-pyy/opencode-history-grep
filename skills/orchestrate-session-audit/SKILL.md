@@ -7,6 +7,8 @@ description: Orchestrate Oracle session mode by fixing source and execution boun
 
 This is the caller-side entry for an explicitly requested retrospective session review. It does not create a separate audit reviewer system; it invokes Oracle in `session` mode and uses the shared Oracle report and owner adjudication gate.
 
+派发前读取 `/root/_/opencode/config/skills/review-work/SKILL.md` 的 `Caller authority`（调用方权限）、`Oracle workflow`（两阶段与只读边界）、`Conditional Oracle report artifact`（报告模板）和 `Finding admission gate`（问题准入）章节；完整、未变的内容已可见时直接复用。本技能沿用其中的只读限制、报告格式、发现准入和复查要求；会话边界和执行顺序按下文安排，不额外启动候选审查。
+
 ## Establish the review object
 
 Determine:

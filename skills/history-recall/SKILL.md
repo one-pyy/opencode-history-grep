@@ -1,6 +1,6 @@
 ---
 name: history-recall
-description: MUST USE when reviewing a current or historical OpenCode session by session_id, including Oracle independent review and session-audit workflows; also use it when the user explicitly asks to search OpenCode history or refers to prior local/OpenCode work that current docs / knowledge_database do not answer.
+description: MUST USE when an OpenCode session is being reviewed or audited (including Oracle independent review and session-audit workflows), or when the user wants to recall, resume, view, or continue earlier local/OpenCode work that the current context, docs, or knowledge_database do not already cover — whether stated explicitly (e.g. "search history", "recall", "续跑", "查看") or only implied (e.g. "continue", "keep going", "what did we do before").
 ---
 
 # history-recall
