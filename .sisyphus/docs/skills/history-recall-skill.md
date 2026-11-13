@@ -124,6 +124,7 @@ skill 正文应清楚写出：
 - 分页参数
 - 类型多选筛选参数
 - `show --all / --before / --after / --full-text`
+- `--reasoning-content` 的用户明确请求门槛及单会话附属展示，遵循[单会话 reasoning 附属展示](../cli/命令设计.md#单会话-reasoning-附属展示)
 - `show --from / --to / --block` 的 inclusive block 边界、quoted `text:<literal>` 唯一匹配与 raw recovery 语义；`user`/`message`/`tool_result`/`tool`/`all` 视图均按各自语义保留 `user_decision`
 - `show --type user` / `--type assistant` 的角色过滤，以及 session 模式 bounded user+assistant Phase 1 → all-block Phase 2 的顺序
 - 按 `session_id` 做 Oracle candidate/session review 时必须使用该 skill

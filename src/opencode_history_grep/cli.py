@@ -78,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     _ = show_parser.add_argument("--after", dest="after", type=int, default=1, help="Blocks to show after the focus anchor. Default: 1")
     _ = show_parser.add_argument("--all", dest="show_all", action="store_true", help="Show the full compiled session view.")
     _ = show_parser.add_argument("--full-text", dest="full_text", action="store_true", help="Do not truncate long block display text.")
+    _ = show_parser.add_argument("--reasoning-content", action="store_true", help="Attach raw reasoning with start/end times and duration in milliseconds to selected messages in this single session.")
     _ = show_parser.add_argument("--type", dest="block_types", action="append", help="Filter full-session view block types. Repeatable: message, all, user (includes completed question decisions), assistant|ai, tool_call, tool|tool_result.")
     _ = show_parser.add_argument("--from", dest="from_block", help="When used with --all, start at this block id, zero-based block index, or quoted text:<literal> that uniquely matches one filtered block.")
     _ = show_parser.add_argument("--to", dest="to_block", help="When used with --all, end at this block id, zero-based block index, or quoted text:<literal> that uniquely matches one filtered block.")
@@ -130,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
             from_block=args.from_block,
             to_block=args.to_block,
             repository_path=args.repository_path,
+            reasoning_content=bool(args.reasoning_content),
         )
 
     parser.error(f"Unknown command: {command}")
@@ -207,6 +209,7 @@ def _run_show(
     from_block: str | None,
     to_block: str | None,
     repository_path: str,
+    reasoning_content: bool = False,
 ) -> int:
     reader = HistoryReader(DEFAULT_UPSTREAM_DATABASE)
     repository = open_compiled_repository(repository_path)
@@ -224,9 +227,12 @@ def _run_show(
         selected_blocks = _resolve_selected_blocks(shown.blocks, _parse_block_ids(block_ids))
         session = reader.load_session(session_id)
         raw_messages = {message.id: message for message in session.messages}
+        reasoning_seen: set[str] = set()
         for block in selected_blocks:
             print(f"[{block.block_type}] {block.title} ({block.block_id}) time={_format_timestamp(block.time_created)}")
             print(_raw_block_text(block=block, raw_messages=raw_messages))
+            if reasoning_content:
+                _print_reasoning_content(block, raw_messages, reasoning_seen)
             print()
         return 0
     if show_all:
@@ -254,19 +260,50 @@ def _run_show(
             full_text=full_text,
         )
 
+    raw_messages = {}
+    if reasoning_content and shown.blocks:
+        raw_messages = {message.id: message for message in reader.load_session(session_id).messages}
+    reasoning_seen = set()
     print(f"session={shown.anchor.session_id} anchor={shown.anchor.block_id}")
     for block in shown.blocks:
         marker = ">>>" if block.block_id == shown.focus_block_id else "   "
         print(f"{marker} [{block.block_type}] {block.title} ({block.block_id}) time={_format_timestamp(block.time_created)}")
         print(block.display_text)
+        if reasoning_content:
+            _print_reasoning_content(block, raw_messages, reasoning_seen)
         print()
     return 0
 
 
-def _format_timestamp(timestamp_ms: int | None) -> str:
+def _print_reasoning_content(block: Any, raw_messages: Mapping[str, Any], seen: set[str]) -> None:
+    if block.message_id in seen:
+        return
+    message = raw_messages.get(block.message_id)
+    if message is None:
+        raise SystemExit(f"Cannot find raw message for block {block.block_id}.")
+    seen.add(block.message_id)
+    for part in sorted(message.parts, key=lambda part: (part.time_created, part.id)):
+        if part.kind != "reasoning":
+            continue
+        time = part.data.get("time")
+        if not isinstance(time, Mapping):
+            time = {}
+        start = time.get("start")
+        end = time.get("end")
+        start = start if type(start) is int and start >= 0 else None
+        end = end if type(end) is int and end >= 0 else None
+        duration = end - start if start is not None and end is not None and end >= start else "unknown"
+        print(f"\n  reasoning start={_format_timestamp(start, milliseconds=True)} end={_format_timestamp(end, milliseconds=True)} duration_ms={duration}")
+        print(part.data.get("text", ""))
+
+
+def _format_timestamp(timestamp_ms: int | None, *, milliseconds: bool = False) -> str:
     if timestamp_ms is None:
         return "unknown"
-    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    value = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone(timedelta(hours=8)))
+    if milliseconds:
+        return value.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _parse_block_ids(values: list[str]) -> list[str]:

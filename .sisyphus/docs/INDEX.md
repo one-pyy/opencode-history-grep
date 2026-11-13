@@ -28,7 +28,7 @@ Purpose: 记录基于 opencode upstream 历史记录的编译式检索 CLI 工�
 
 ## CLI
 
-[cli/命令设计.md] — 已实现主行为：Python CLI 命令、输入输出、query 逻辑与结果呈现约定
+[cli/命令设计.md] — Python CLI 命令、筛选与结果呈现，以及单会话 reasoning 附属展示契约
 [cli/筛选设计.md] — 已实现主行为：目录筛选与时间筛选的输入语义、作用边界与命令映射
 
 ## Skills

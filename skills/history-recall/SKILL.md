@@ -53,7 +53,19 @@ Before searching history, first check the relevant `docs/` and `knowledge_databa
 - `--all`: show a whole compiled session
 - `--block`: show complete raw content for one or more compiled block ids or zero-based block indexes; comma-separated values are allowed. This uses compiled history for location, then reads upstream SQLite so long tool output is not limited by compile-time summaries.
 - `--full-text`: do not truncate long text or tool output
+- `--reasoning-content`：仅在用户明确要求查看 reasoning（推理内容）时添加，且只用于指定单个会话的 `show --session`。
 - `--from` / `--to`: when combined with `--all`, restrict the view to inclusive block ids, zero-based block indexes, or quoted `text:<literal>` endpoints that uniquely match one block after `--type` filtering
+
+### 用户要求查看推理内容
+
+先按原有类型、范围、上下文或指定块筛选，再用 `--reasoning-content` 为入选消息附带 reasoning；未入选消息不展示，同一消息只附带一次。内容直接从原始历史读取，不进入编译缓存，也不参与搜索、范围端点或锚点匹配。
+
+每段展示完整原文、UTC+8 毫秒精度的起止时间与 `duration_ms`。时间缺失或异常时可能显示 `unknown`；耗时表示宿主记录的片段持续时间。评价时结合可见消息和后续行为，区分观察与推断。
+
+```bash
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --type assistant --from 'text:<exact unique start>' --reasoning-content
+```
 
 ## Session review contract
 

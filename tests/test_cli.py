@@ -1119,3 +1119,144 @@ def test_module_entrypoint_reports_invalid_time_filter(tmp_path: Path) -> None:
 
     assert process.returncode != 0
     assert "Invalid time filter: not-a-date. Use ISO 8601 date or datetime." in process.stderr
+
+
+REASONING_TEXT = "  reasoning raw start\n" + "原文内容" * 400 + "\nraw end  "
+
+
+@pytest.fixture
+def reasoning_history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    database_path = tmp_path / "history.db"
+    repository_path = tmp_path / "compiled_repo"
+    _create_history_db(database_path)
+    start = int(datetime(2026, 10, 13, 3, 10, 23, tzinfo=timezone.utc).timestamp() * 1000) + 123
+    with sqlite3.connect(database_path) as connection:
+        for message_id, session_id, created in [
+            ("message-hidden", "session-cli", 120),
+            ("message-other-assistant", "session-other", 310),
+        ]:
+            connection.execute(
+                "INSERT INTO message VALUES (?, ?, ?, ?, ?)",
+                (message_id, session_id, created, created, json.dumps({"role": "assistant"})),
+            )
+        parts = [
+            ("reasoning-1", "message-assistant", "session-cli", 108,
+             {"type": "reasoning", "text": REASONING_TEXT, "time": {"start": start, "end": start + 1456}}),
+            ("reasoning-2", "message-assistant", "session-cli", 114,
+             {"type": "reasoning", "text": "second reasoning segment", "time": {"start": start + 2000, "end": start + 2001}}),
+            ("hidden-text", "message-hidden", "session-cli", 120,
+             {"type": "text", "text": "hidden assistant message"}),
+            ("hidden-reasoning", "message-hidden", "session-cli", 120,
+             {"type": "reasoning", "text": "hidden message reasoning", "time": {"start": start, "end": start}}),
+            ("other-reasoning", "message-other-assistant", "session-other", 310,
+             {"type": "reasoning", "text": "other session reasoning", "time": {"start": start, "end": start}}),
+        ]
+        connection.executemany(
+            "INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)",
+            [(part_id, message_id, session_id, created, created, json.dumps(data))
+             for part_id, message_id, session_id, created, data in parts],
+        )
+    monkeypatch.setattr(cli, "DEFAULT_UPSTREAM_DATABASE", str(database_path))
+    return database_path, repository_path
+
+
+@pytest.mark.parametrize("selection", [
+    ["--all", "--type", "assistant", "--from", "0", "--to", "0"],
+    ["--all", "--type", "tool"],
+    ["--anchor", "message-assistant:0001", "--before", "0", "--after", "0"],
+    ["--block", "1,2,3"],
+])
+def test_reasoning_attaches_once_to_selected_message(reasoning_history: tuple[Path, Path], selection: list[str]) -> None:
+    _, repository = reasoning_history
+    code, output = _run_cli([
+        "show", "--session", "session-cli", "--repository", str(repository),
+        *selection, "--reasoning-content",
+    ])
+    assert code == 0
+    assert output.count(REASONING_TEXT) == 1
+    assert output.count("second reasoning segment") == 1
+    assert output.index(REASONING_TEXT) < output.index("second reasoning segment")
+    assert "start=2026-10-13 11:10:23.123 end=2026-10-13 11:10:24.579 duration_ms=1456" in output
+    assert "hidden message reasoning" not in output
+    assert "other session reasoning" not in output
+
+
+@pytest.mark.parametrize("selection", [
+    ["--all", "--type", "user", "--from", "0", "--to", "0"],
+    ["--all", "--type", "all", "--from", "text:needle in user text", "--to", "text:needle in user text"],
+    ["--anchor", "message-user:0000", "--before", "0", "--after", "0"],
+    ["--block", "0"],
+])
+def test_reasoning_does_not_escape_message_selection(reasoning_history: tuple[Path, Path], selection: list[str]) -> None:
+    _, repository = reasoning_history
+    code, output = _run_cli([
+        "show", "--session", "session-cli", "--repository", str(repository),
+        *selection, "--reasoning-content",
+    ])
+    assert code == 0
+    assert "reasoning start=" not in output
+    assert REASONING_TEXT not in output
+
+
+def test_reasoning_uses_only_selected_message_and_not_text_endpoints(reasoning_history: tuple[Path, Path]) -> None:
+    _, repository = reasoning_history
+    args = ["show", "--session", "session-cli", "--repository", str(repository), "--all", "--type", "assistant"]
+    _, output = _run_cli([*args, "--from", "text:hidden assistant message", "--reasoning-content"])
+    assert "hidden message reasoning" in output
+    assert REASONING_TEXT not in output
+    with pytest.raises(SystemExit, match="matched no blocks"):
+        _run_cli([*args, "--from", "text:second reasoning segment", "--reasoning-content"])
+
+
+def test_reasoning_is_opt_in_and_never_written_to_cache(reasoning_history: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    _, repository = reasoning_history
+    args = ["show", "--session", "session-cli", "--repository", str(repository), "--all"]
+    _, baseline = _run_cli(args)
+    assert REASONING_TEXT not in baseline
+    snapshots = {path: path.read_bytes() for path in repository.rglob("*.json")}
+    _, output = _run_cli([*args, "--reasoning-content"])
+    assert REASONING_TEXT in output
+    assert snapshots == {path: path.read_bytes() for path in repository.rglob("*.json")}
+    assert all(b"reasoning raw start" not in content for content in snapshots.values())
+    _, unchanged = _run_cli(args)
+    assert unchanged == baseline
+    original = cli.HistoryReader.load_session
+    reads = []
+
+    def load_session(reader: Any, session_id: str) -> Any:
+        reads.append(session_id)
+        return original(reader, session_id)
+
+    monkeypatch.setattr(cli.HistoryReader, "load_session", load_session)
+    _run_cli([*args, "--reasoning-content"])
+    assert reads == ["session-cli"]
+
+
+@pytest.mark.parametrize(("time", "expected"), [
+    ({"start": 0, "end": 1}, "start=1970-01-01 08:00:00.000 end=1970-01-01 08:00:00.001 duration_ms=1"),
+    ({"start": 0}, "start=1970-01-01 08:00:00.000 end=unknown duration_ms=unknown"),
+    ({"start": 10, "end": 0}, "start=1970-01-01 08:00:00.010 end=1970-01-01 08:00:00.000 duration_ms=unknown"),
+    ({"start": "bad", "end": None}, "start=unknown end=unknown duration_ms=unknown"),
+    ({}, "start=unknown end=unknown duration_ms=unknown"),
+])
+def test_reasoning_handles_empty_text_and_partial_times(reasoning_history: tuple[Path, Path], time: dict[str, Any], expected: str) -> None:
+    database, repository = reasoning_history
+    with sqlite3.connect(database) as connection:
+        connection.execute("UPDATE part SET data = ? WHERE id = 'reasoning-1'", (json.dumps({"type": "reasoning", "text": "", "time": time}),))
+    code, output = _run_cli([
+        "show", "--session", "session-cli", "--repository", str(repository),
+        "--block", "1", "--reasoning-content",
+    ])
+    assert code == 0
+    assert expected in output
+
+
+@pytest.mark.parametrize("args", [
+    ["grep", "--query", "needle"],
+    ["compile"],
+    ["show", "--all"],
+])
+def test_reasoning_requires_single_session_show(args: list[str]) -> None:
+    with pytest.raises(SystemExit) as error:
+        _run_cli([*args, "--reasoning-content"])
+    assert error.value.code == 2

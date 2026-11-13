@@ -274,6 +274,17 @@ opencode-history-grep show --session "$session_id" --all --full-text
 - 找原始要求时优先 `--type user`
 - 找解释 / 结论时优先 `--type assistant`
 
+### 按需查看推理内容
+
+用户明确要求查看 reasoning（推理内容）时，在单会话 `show` 中添加 `--reasoning-content`：
+
+```bash
+session_id='<provided session_id>'
+opencode-history-grep show --session "$session_id" --all --type assistant --reasoning-content
+```
+
+可配合现有范围、上下文或指定块读取。只为入选消息附带一次 reasoning，展示完整原文、UTC+8 毫秒精度的起止时间与 `duration_ms`；缺失或异常时间显示 `unknown`。reasoning 直接回源读取，不进入编译缓存。参数仅属于单会话 `show`。
+
 ### Skill
 
 仓库内附带一个可复用 skill：
